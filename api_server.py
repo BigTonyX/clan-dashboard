@@ -5,8 +5,15 @@ import uvicorn
 import requests                     # Needed to call the external API
 import datetime                     # Needed for time calculations
 import time                         # Needed to get the current time easily
-import sqlite3                      # Needed to interact with the SQLite database
+import pymongo
+from dotenv import load_dotenv
+load_dotenv()
+from pymongo import MongoClient
+from pymongo.collection import Collection
 
+# --- MongoDB Atlas Connection ---
+MONGO_CONNECTION_STRING = "mongodb+srv://littlebombcoc:85f5OXE7J9FJ1Fs4@clan-dashboard-cluster.cxlydgv.mongodb.net/?retryWrites=true&w=majority&appName=clan-dashboard-cluster" # PASTE YOUR COPIED STRING HERE
+DB_NAME = "clan_dashboard_db" # Use the same database name as in the fetcher
 
 # Create the FastAPI app instance
 app = FastAPI(title="Clan Dashboard API", version="0.1.0")
@@ -102,43 +109,53 @@ def calculate_projected_score(
     current_info: dict,
     forecast_period_minutes: int,
     minutes_remaining_war: float,
-    cursor: sqlite3.Cursor # Pass the database cursor
+    clans_collection: Collection # Use MongoDB Collection instead of cursor
 ):
-    """Calculates projected score for a single clan."""
+    """Calculates projected score for a single clan using MongoDB."""
 
     projected_points = None # Default
-    forecast_gain = None
+    forecast_gain = None # Keep track of the gain used for projection
 
-    # 1. Check 6-hour rule
+    # 1. Check 6-hour rule (Logic remains the same, uses current_info dict)
     has_6h_data = False
     first_seen_str = current_info.get('first_seen')
-    latest_ts_dt = datetime.datetime.fromisoformat(current_info['latest_timestamp'])
-    six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
-    if first_seen_str:
+    latest_timestamp_str = current_info.get('latest_timestamp')
+    if latest_timestamp_str:
         try:
-            first_seen_dt = datetime.datetime.fromisoformat(first_seen_str)
-            if first_seen_dt <= six_hours_ago:
-                has_6h_data = True
-        except ValueError: pass # Ignore invalid date format
+            latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str)
+            six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
+            if first_seen_str:
+                try:
+                    first_seen_dt = datetime.datetime.fromisoformat(first_seen_str)
+                    if first_seen_dt <= six_hours_ago:
+                        has_6h_data = True
+                except ValueError: pass # Ignore invalid first_seen format
+        except ValueError: pass # Ignore invalid latest_timestamp format
+    else:
+        print(f"Warning: Missing latest_timestamp for {clan_name}, cannot check 6h rule.")
 
-    # 2. Fetch past data for forecast (if rule passed)
+
+    # 2. Fetch past data for forecast (if rule passed) using MongoDB Collection
     if has_6h_data and minutes_remaining_war > 0 and forecast_period_minutes > 0:
         past_points_forecast = None
         try:
-            target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period_minutes)
-            target_forecast_past_ts_str = target_forecast_past_dt.isoformat()
+            # Ensure latest_ts_dt was successfully created above
+            if latest_timestamp_str: # Check again for safety
+                 latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str) # Re-get in case of outer except
+                 target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period_minutes)
+                 # Use timezone-aware comparison if needed, assuming UTC for now
+                 # target_forecast_past_ts_str = target_forecast_past_dt.isoformat()
 
-            query_past_forecast = """
-            SELECT current_points as past_points_forecast
-            FROM clans
-            WHERE clan_name = ? AND timestamp <= ?
-            ORDER BY timestamp DESC
-            LIMIT 1;
-            """
-            cursor.execute(query_past_forecast, (clan_name, target_forecast_past_ts_str))
-            result = cursor.fetchone()
-            if result:
-                past_points_forecast = result['past_points_forecast']
+                 # MongoDB query to find the latest doc at or before the target time
+                 query_filter = {
+                     "clan_name": clan_name,
+                     "timestamp": {"$lte": target_forecast_past_dt} # Use datetime obj directly
+                 }
+                 sort_order = [("timestamp", pymongo.DESCENDING)]
+                 result_doc = clans_collection.find_one(query_filter, sort=sort_order)
+
+                 if result_doc:
+                     past_points_forecast = result_doc.get('current_points')
 
         except Exception as q_err:
             print(f"Error querying past forecast data for {clan_name}: {q_err}")
@@ -150,19 +167,23 @@ def calculate_projected_score(
                 gain_rate_per_minute = forecast_gain / forecast_period_minutes
                 projected_points = current_info['current_points'] + (gain_rate_per_minute * minutes_remaining_war)
 
-    return projected_points, has_6h_data, forecast_gain # Return projection, rule status, and gain
+    # Return projection, rule status, and the gain used for forecast
+    return projected_points, has_6h_data, forecast_gain
 
 
 # Dashboard endpoint
 @app.get("/api/dashboard")
 async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
-    """ Fetches and calculates clan data using helper for projection. """
+    """ Fetches and calculates clan data from MongoDB for the dashboard. """
     print(f"/api/dashboard called with time_period={time_period}, forecast_period={forecast_period}")
-    db_path = "clan_data.db"; conn = None; dashboard_results = []
-    minutes_remaining = 0; war_finish_time_dt = None
+
+    client = None  # Initialize client
+    dashboard_results = [] # Final list we will return
+    minutes_remaining = 0
+    war_finish_time_dt = None
 
     try:
-        # --- Fetch War End Time --- (Same as before)
+        # --- Fetch War End Time ---
         try:
             countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
             if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
@@ -170,38 +191,97 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
                 if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
             else: print("Could not get valid war end time from countdown API.")
-        except Exception as cd_err: print(f"Error fetching or processing war end time: {cd_err}")
+        except Exception as cd_err: print(f"Error fetching or processing war end time: {cd_err}") # Continue even if countdown fails
 
-        # --- Database Connection --- (Same as before)
-        conn = sqlite3.connect(db_path); conn.row_factory = sqlite3.Row; cursor = conn.cursor()
+        # --- Connect to MongoDB ---
+        # Add serverSelectionTimeoutMS to handle connection issues faster
+        client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000)
+        db = client[DB_NAME]
+        clans_collection = db["clans"]
+        # Test connection using ping
+        client.admin.command('ping')
+        print("MongoDB connection successful for dashboard.")
 
-        # === Query 1: Get Latest Data === (Same as before)
-        query_latest = """
-        WITH LatestTimestamp AS ( SELECT MAX(timestamp) as max_ts FROM clans ),
-        RankedClans AS ( SELECT clan_name, current_points, members, timestamp as latest_timestamp, first_seen, RANK() OVER (ORDER BY current_points DESC) as current_rank FROM clans WHERE timestamp = (SELECT max_ts FROM LatestTimestamp) )
-        SELECT * FROM RankedClans WHERE current_rank <= 25 ORDER BY current_rank;
-        """
-        cursor.execute(query_latest); latest_rows = cursor.fetchall(); latest_timestamp_str = latest_rows[0]['latest_timestamp'] if latest_rows else None
-        if not latest_rows or not latest_timestamp_str: return []
-        ranked_latest_list = [dict(row) for row in latest_rows]; top_clan_names = [row['clan_name'] for row in ranked_latest_list]
+        # === Get Latest Timestamp ===
+        latest_doc = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)])
+        if not latest_doc or not latest_doc.get('timestamp'):
+            print("No data found in clans collection.")
+            if client: client.close() # Close client before returning
+            return []
+        latest_ts_dt = latest_doc['timestamp'] # This is already a datetime object from pymongo
+        latest_timestamp_str = latest_ts_dt.isoformat() # For potential string use
+        print(f"Latest timestamp in DB: {latest_timestamp_str}")
 
-        # === Query 2: Get Past Data for X-Minute Gain === (Same as before)
+        # === Query 1: Get Latest Data for Top 25 ===
+        print("Executing query 1: Get latest top 25 clan data...")
+        # Define projection for needed fields
+        projection_latest = {"_id": 0, "clan_name": 1, "current_points": 1, "members": 1, "timestamp": 1, "first_seen": 1}
+        latest_docs_cursor = clans_collection.find(
+            {"timestamp": latest_ts_dt}, # Filter by exact latest timestamp
+            projection=projection_latest
+        ).sort("current_points", pymongo.DESCENDING).limit(25)
+
+        ranked_latest_list = []
+        rank = 1
+        for doc in latest_docs_cursor:
+             doc['latest_timestamp'] = doc['timestamp'].isoformat() # Add ISO string version
+             doc['current_rank'] = rank
+             # Convert datetime objects to string for consistency before processing if needed
+             if isinstance(doc.get('first_seen'), datetime.datetime):
+                   doc['first_seen'] = doc['first_seen'].isoformat()
+             if isinstance(doc.get('timestamp'), datetime.datetime):
+                   doc['timestamp'] = doc['timestamp'].isoformat() # Should match latest_timestamp
+             ranked_latest_list.append(doc)
+             rank += 1
+        print(f"Query 1 processed {len(ranked_latest_list)} rows.")
+
+        if not ranked_latest_list:
+             if client: client.close()
+             return []
+        top_clan_names = [row['clan_name'] for row in ranked_latest_list]
+
+        # === Query 2: Get Past Data for X-Minute Gain ===
         past_data_map_gain = {}
         try:
-            latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str); target_past_dt = latest_ts_dt - datetime.timedelta(minutes=time_period); target_past_ts_str = target_past_dt.isoformat(); placeholders = ','.join('?' * len(top_clan_names))
-            query_past_gain = f"""WITH RP AS (SELECT c.clan_name, c.current_points as past_points, ROW_NUMBER() OVER (PARTITION BY c.clan_name ORDER BY c.timestamp DESC) as rn FROM clans c WHERE c.clan_name IN ({placeholders}) AND c.timestamp <= ?) SELECT clan_name, past_points FROM RP WHERE rn = 1;"""; cursor.execute(query_past_gain, top_clan_names + [target_past_ts_str]); past_data_map_gain = {row['clan_name']: dict(row) for row in cursor.fetchall()}; print(f"Gain query returned {len(past_data_map_gain)} rows.")
-        except Exception as q2_err: print(f"Error in gain query: {q2_err}")
+            # Ensure latest_ts_dt is datetime object before using it
+            if isinstance(latest_ts_dt, datetime.datetime):
+                target_past_dt = latest_ts_dt - datetime.timedelta(minutes=time_period)
+                print(f"Target past timestamp for gain calculation: {target_past_dt.isoformat()}")
+                # Use Aggregation pipeline for efficiency
+                pipeline_gain = [
+                    { '$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_past_dt} }},
+                    { '$sort': {'timestamp': pymongo.DESCENDING} },
+                    { '$group': { '_id': '$clan_name', 'past_points': {'$first': '$current_points'}, 'timestamp': {'$first': '$timestamp'} }}
+                ]
+                past_gain_results = clans_collection.aggregate(pipeline_gain)
+                past_data_map_gain = {row['_id']: {"past_points": row['past_points']} for row in past_gain_results}
+                print(f"Gain query returned {len(past_data_map_gain)} results.")
+            else:
+                print("Could not determine latest timestamp for gain calculation.")
+        except Exception as q2_err: print(f"Error in gain aggregation: {q2_err}")
+
 
         # === Combine Data and Calculate All Fields ===
         print("Calculating all fields using helper...")
         processed_results = {}
 
-        # --- First pass: Use helper to get projection, calculate gain --- (Same as before)
+        # --- First pass: Use helper to get projection, calculate gain ---
         for i, current_clan_info in enumerate(ranked_latest_list):
-            clan_name = current_clan_info['clan_name']; clan_result = current_clan_info.copy()
-            past_info_gain = past_data_map_gain.get(clan_name); clan_result['x_minute_gain'] = (current_clan_info['current_points'] - past_info_gain['past_points']) if past_info_gain else None
-            projected_points, has_6h_data, _ = calculate_projected_score(clan_name=clan_name, current_info=clan_result, forecast_period_minutes=forecast_period, minutes_remaining_war=minutes_remaining, cursor=cursor)
-            clan_result['projected_points'] = projected_points; clan_result['has_6h_data'] = has_6h_data
+            clan_name = current_clan_info['clan_name']
+            clan_result = current_clan_info.copy()
+
+            # Calculate X-Minute Gain
+            past_info_gain = past_data_map_gain.get(clan_name)
+            clan_result['x_minute_gain'] = (current_clan_info['current_points'] - past_info_gain['past_points']) if past_info_gain else None
+
+            # Call helper function for projection (passing collection now)
+            projected_points, has_6h_data, _ = calculate_projected_score(
+                clan_name=clan_name, current_info=clan_result, forecast_period_minutes=forecast_period,
+                minutes_remaining_war=minutes_remaining, clans_collection=clans_collection
+            )
+            clan_result['projected_points'] = projected_points
+            clan_result['has_6h_data'] = has_6h_data
+
             processed_results[clan_name] = clan_result
 
         # --- Second pass: Calculate Gap, TimeToCatch, and Forecast Rank ---
@@ -211,53 +291,50 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         final_dashboard_results = []
         for i, current_clan_info in enumerate(ranked_latest_list):
             clan_name = current_clan_info['clan_name']
-            clan_result = processed_results[clan_name] # Get result with projection info
+            clan_result = processed_results[clan_name]
 
-            # Calculate Gap (Same as before)
+            # Calculate Gap
             clan_result['gap'] = 0 if clan_result['current_rank'] == 1 else ranked_latest_list[i-1]['current_points'] - current_clan_info['current_points']
 
-            # --- Calculate Time to Catch ---
-            time_to_catch_str = "N/A" # Default value
+            # Calculate Time to Catch
+            time_to_catch_str = "N/A"; gain_difference = 0 # Initialize gain_difference
             if clan_result['current_rank'] > 1:
-                clan_above_name = ranked_latest_list[i-1]['clan_name']
-                clan_above_result = processed_results.get(clan_above_name)
-                current_gain = clan_result['x_minute_gain']
-                above_gain = clan_above_result.get('x_minute_gain') if clan_above_result else None
-
-                # Check condition: Both gains must be valid numbers, and current > above
-                if (current_gain is not None and above_gain is not None and
-                    isinstance(current_gain, (int, float)) and isinstance(above_gain, (int, float)) and
-                    current_gain > above_gain):
-
-                    gain_difference = current_gain - above_gain
-                    # --- Correction: Nest the next check inside the block where gain_difference is valid ---
-                    if gain_difference > 0 and time_period > 0: # Avoid division by zero or invalid period
-                        try: # Add try-except for potential math errors
-                            minutes_to_catch = (clan_result['gap'] * time_period) / gain_difference
-                            catch_timedelta = datetime.timedelta(minutes=minutes_to_catch)
-                            # Use the same helper function as the countdown endpoint
-                            time_to_catch_str = format_timedelta(catch_timedelta)
-                        except Exception as calc_err:
-                            print(f"Error calculating minutes_to_catch for {clan_name}: {calc_err}")
-                            time_to_catch_str = "Error" # Indicate calculation error
-
+                clan_above_name=ranked_latest_list[i-1]['clan_name']; clan_above_result=processed_results.get(clan_above_name);
+                current_gain=clan_result['x_minute_gain']; above_gain=clan_above_result.get('x_minute_gain') if clan_above_result else None;
+                if (current_gain is not None and above_gain is not None and isinstance(current_gain,(int,float)) and isinstance(above_gain,(int,float)) and current_gain > above_gain):
+                    gain_difference=current_gain-above_gain;
+                    # Nested check - only calculate if gain_difference is positive
+                    if gain_difference > 0 and time_period > 0:
+                        try: minutes_to_catch=(clan_result['gap']*time_period)/gain_difference; time_to_catch_str=format_timedelta(datetime.timedelta(minutes=minutes_to_catch));
+                        except Exception as calc_err: print(f"Error calculating T2C for {clan_name}: {calc_err}"); time_to_catch_str = "Error"
             clan_result['time_to_catch'] = time_to_catch_str
-            # --- End Time to Catch Correction ---
 
-            # Assign Forecast Rank using helper result
+            # Assign Forecast Rank
             clan_result['forecast'] = forecast_ranks.get(clan_name) if clan_result['has_6h_data'] else None
 
-            # Remove helper fields before returning
+            # Remove helper fields & ensure correct timestamp format
             del clan_result['projected_points']
             del clan_result['has_6h_data']
+            # Clean up timestamp fields for final JSON output
+            if 'timestamp' in clan_result: del clan_result['timestamp'] # Remove original datetime object if present
+            if isinstance(clan_result.get('first_seen'), datetime.datetime): # Ensure first_seen is string
+                clan_result['first_seen'] = clan_result['first_seen'].isoformat()
+
 
             final_dashboard_results.append(clan_result)
 
-    # --- Error Handling & Connection Closing --- (Same as before)
-    except sqlite3.Error as e: print(f"Database error in /api/dashboard: {e}"); raise HTTPException(status_code=500, detail=f"DB error: {e}")
-    except Exception as e: print(f"Unexpected error in /api/dashboard: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    # --- Error Handling & Connection Closing ---
+    except pymongo.errors.ConnectionFailure as e:
+        print(f"MongoDB connection error in /api/dashboard: {e}")
+        raise HTTPException(status_code=503, detail="Database connection error.")
+    except Exception as e:
+        print(f"Unexpected error in /api/dashboard: {e}")
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
     finally:
-        if conn: conn.close(); print("Database connection closed for /api/dashboard.")
+        if client:
+            client.close()
+            print("MongoDB connection closed for /api/dashboard.")
 
     return final_dashboard_results
 
@@ -386,68 +463,69 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
 # Endpoint to get historical data for comparing clans
 @app.get("/api/clan_comparison")
 async def get_clan_comparison(
-    # Use Query(...) to handle list parameters from URL query string
     clan_names: List[str] = Query(..., min_length=1, max_length=3, title="Clan Names", description="List of 1 to 3 clan names to compare."),
-    time_period: int = Query(60, gt=0, title="Time Period (minutes)", description="Lookback period in minutes.") # Default 60 mins
+    time_period: int = Query(60, gt=0, title="Time Period (minutes)", description="Lookback period in minutes.")
 ):
-    """
-    Fetches historical point data for up to 3 specified clans over a given time period.
-    """
+    """ Fetches historical point data from MongoDB for clan comparison. """
     print(f"/api/clan_comparison called for clans: {clan_names}, time_period: {time_period}")
 
-    # Basic validation done by FastAPI (min/max_length, gt=0), could add more if needed
-
-    db_path = "clan_data.db"; conn = None
+    client = None # Initialize client variable
     comparison_data = []
 
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        # Connect to MongoDB Atlas
+        client = MongoClient(MONGO_CONNECTION_STRING)
+        db = client[DB_NAME]
+        clans_collection = db["clans"] # Use the time-series collection
 
-        # Calculate start timestamp
-        now_dt = datetime.datetime.now()
-        start_dt = now_dt - datetime.timedelta(minutes=time_period)
-        start_ts_str = start_dt.isoformat()
-        print(f"Fetching comparison data from: {start_ts_str}")
+        # Calculate start timestamp (use timezone-aware UTC)
+        now_dt_utc = datetime.datetime.now(datetime.timezone.utc)
+        start_dt_utc = now_dt_utc - datetime.timedelta(minutes=time_period)
+        print(f"Fetching comparison data from: {start_dt_utc}")
 
-        # Construct query with placeholders for clan names list
-        placeholders = ','.join('?' * len(clan_names))
-        query = f"""
-        SELECT
-            clan_name,
-            timestamp,
-            current_points
-        FROM clans
-        WHERE clan_name IN ({placeholders})
-          AND timestamp >= ?
-        ORDER BY clan_name, timestamp;
-        """
+        # Construct MongoDB query
+        query_filter = {
+            "clan_name": {"$in": clan_names}, # Match clans in the list
+            "timestamp": {"$gte": start_dt_utc} # Match timestamps within the period
+        }
+        # Define projection to return only necessary fields + exclude MongoDB's _id
+        projection = {
+            "_id": 0, # Exclude the default MongoDB ID
+            "clan_name": 1,
+            "timestamp": 1,
+            "current_points": 1
+        }
+        # Define sort order
+        sort_order = [("clan_name", pymongo.ASCENDING), ("timestamp", pymongo.ASCENDING)]
 
-        query_params = clan_names + [start_ts_str]
         print(f"Executing comparison query for {len(clan_names)} clans...")
-        cursor.execute(query, query_params)
-        rows = cursor.fetchall()
-        print(f"Query returned {len(rows)} comparison data points.")
+        cursor = clans_collection.find(query_filter, projection).sort(sort_order)
 
-        # Convert rows to list of dictionaries
-        comparison_data = [dict(row) for row in rows]
+        # Convert results to list
+        # Need to convert datetime objects back to ISO strings for JSON response
+        raw_results = list(cursor)
+        for doc in raw_results:
+             # Ensure timestamp is JSON serializable (ISO format string)
+             if isinstance(doc.get('timestamp'), datetime.datetime):
+                  doc['timestamp'] = doc['timestamp'].isoformat()
+             comparison_data.append(doc)
 
+        print(f"Query returned {len(comparison_data)} comparison data points.")
 
-    except sqlite3.Error as e:
-        print(f"Database error in /api/clan_comparison: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error accessing clan data: {e}")
+    except pymongo.errors.ConnectionFailure as e:
+         print(f"MongoDB connection error in /api/clan_comparison: {e}")
+         raise HTTPException(status_code=503, detail="Database connection error.")
     except Exception as e:
         print(f"Unexpected error in /api/clan_comparison: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error in comparison endpoint: {e}")
     finally:
-        if conn:
-            conn.close()
-            print("Database connection closed for /api/clan_comparison.")
+        if client:
+            client.close()
+            print("MongoDB connection closed for /api/clan_comparison.")
 
-    return comparison_data # Return the list of historical data points
+    return comparison_data
 
 # --- This part allows running directly with 'python api_server.py' (optional but convenient) ---
 # Note: For development, running with 'uvicorn api_server:app --reload' is usually preferred.
