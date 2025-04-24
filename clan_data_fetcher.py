@@ -52,26 +52,99 @@ def fetch_clan_data():
         return None
 
 
-# --- MongoDB Insertion Logic --- (Function remains the same)
-def insert_clan_data(clan_list, client):
-    # ... (keep the existing insert_clan_data function code here) ...
-    if not clan_list: print("No clan data provided to insert."); return 0
+# --- MongoDB Insertion Logic ---
+def insert_clan_data(clan_list, client): # Pass the MongoDB client
+    """Inserts/Updates clan data into MongoDB Atlas with detailed logging."""
+    if not clan_list:
+        print("No clan data provided to insert."); sys.stdout.flush(); # Flush
+        return 0
+
     print(f"Processing insert/update for {len(clan_list)} clans into MongoDB..."); sys.stdout.flush() # Flush
-    db = client[DB_NAME]; clans_collection = db["clans"]; details_collection = db["clan_details"]
-    inserted_count = 0; details_updated_count = 0; processed_count = 0
-    current_timestamp = datetime.datetime.now(datetime.timezone.utc)
+    db = client[DB_NAME] # Select the database
+    clans_collection = db["clans"] # Select the time-series collection
+    details_collection = db["clan_details"] # Select the details collection
+
+    inserted_count = 0
+    details_processed_count = 0 # Count attempted upserts for details
+    processed_count = 0
+    current_timestamp = datetime.datetime.now(datetime.timezone.utc) # Timestamp for this batch
+
     for clan in clan_list:
-        processed_count += 1; clan_name = clan.get("Name"); clan_points = clan.get("Points"); members_count = clan.get("Members"); icon = clan.get("Icon"); country_code = clan.get("CountryCode"); capacity = clan.get("MemberCapacity"); created_api = clan.get("Created")
-        if clan_name is None or clan_points is None: print(f"Skipping clan due to missing Name or Points: {clan}"); sys.stdout.flush(); continue
+        processed_count += 1
+        clan_name = clan.get("Name")
+        clan_points = clan.get("Points")
+        members_count = clan.get("Members")
+        icon = clan.get("Icon")
+        country_code = clan.get("CountryCode")
+        capacity = clan.get("MemberCapacity")
+        created_api = clan.get("Created")
+
+        if clan_name is None or clan_points is None:
+            print(f"Skipping clan due to missing Name or Points: {clan}"); sys.stdout.flush(); # Flush
+            continue # Skip to the next clan in the loop
+
+        # --- Insert into 'clans' collection ---
         try:
+            # Check if clan exists (only need to do this once theoretically for first_seen)
+            # For simplicity, we might remove this check if it causes issues,
+            # first_seen would then only be accurate if DB starts empty.
             existing_clan_check = clans_collection.find_one({"clan_name": clan_name}, {"_id": 1})
-            clan_doc = {"clan_name": clan_name, "current_points": clan_points, "members": members_count, "timestamp": current_timestamp,}
-            if not existing_clan_check: clan_doc["first_seen"] = current_timestamp; # print(f"Clan '{clan_name}' is new. Setting first_seen.") # Keep logs cleaner
-            clans_collection.insert_one(clan_doc); inserted_count += 1
-            details_doc = {"icon": icon, "country_code": country_code, "member_capacity": capacity, "created_timestamp_api": created_api, "last_checked": current_timestamp}
-            details_collection.update_one({"clan_name": clan_name}, {"$set": details_doc}, upsert=True); details_updated_count += 1
-        except Exception as e: print(f"Error processing/inserting data for clan '{clan_name}': {e}"); sys.stderr.flush(); continue # Flush error
-    print(f"Processed {processed_count} clans. Inserted {inserted_count} docs into 'clans'. Upserted {details_updated_count} docs in 'clan_details'."); sys.stdout.flush() # Flush
+
+            clan_doc = {
+                "clan_name": clan_name,
+                "current_points": clan_points,
+                "members": members_count,
+                "timestamp": current_timestamp, # Use the batch timestamp
+            }
+            # Only add first_seen if this is the very first time we see the clan
+            if not existing_clan_check:
+                 clan_doc["first_seen"] = current_timestamp
+                 # print(f"Clan '{clan_name}' is new. Setting first_seen.") # Keep logs cleaner
+
+            # --- Log before insert attempt ---
+            print(f"DEBUG: Attempting insert_one for {clan_name} at {current_timestamp.isoformat()}"); sys.stdout.flush()
+
+            insert_result = clans_collection.insert_one(clan_doc)
+
+            if insert_result.acknowledged:
+                inserted_count += 1
+                # --- Log after successful insert ---
+                # print(f"DEBUG: Success insert_one for {clan_name}"); sys.stdout.flush() # Can be noisy
+            else:
+                # This case is rare with modern pymongo, usually throws exception on error
+                print(f"DEBUG: FAILED insert (not acknowledged) into clans: {clan_name}"); sys.stderr.flush()
+
+        except Exception as e_insert:
+            # --- Log any exception during insert ---
+            print(f"DEBUG: EXCEPTION during insert into clans for {clan_name}: {e_insert}"); sys.stderr.flush()
+            # Decide if we should skip details update if insert fails - let's attempt anyway for now
+            pass # Continue processing loop
+
+        # --- Update 'clan_details' collection ---
+        try:
+            details_doc = {
+                "icon": icon,
+                "country_code": country_code,
+                "member_capacity": capacity,
+                "created_timestamp_api": created_api,
+                "last_checked": current_timestamp # Use batch timestamp
+            }
+            update_result = details_collection.update_one(
+                {"clan_name": clan_name}, # Filter
+                {"$set": details_doc},     # Update
+                upsert=True                # Option
+            )
+            details_processed_count += 1
+            # Optional: Log success/details of update
+            # if update_result.upserted_id: print(f"DEBUG: Inserted details for {clan_name}")
+            # elif update_result.modified_count > 0: print(f"DEBUG: Updated details for {clan_name}")
+
+        except Exception as e_update:
+             print(f"Error processing/updating details for clan '{clan_name}': {e_update}"); sys.stderr.flush()
+             # Continue with the next clan even if details update fails
+
+    # Print summary after loop
+    print(f"Processed {processed_count} clans. Successful inserts into 'clans': {inserted_count}. Attempted upserts into 'clan_details': {details_processed_count}."); sys.stdout.flush() # Flush
     return inserted_count
 
 # --- Main Execution Loop ---
@@ -112,4 +185,4 @@ while True:
     print(f"--- Cycle complete. Waiting for {wait_seconds} seconds... ---"); sys.stdout.flush() # Flush
     time.sleep(wait_seconds)
 
-# Note: Cleanup like client.close() won't be reached in infinite loop without signal handling.
+# Note: Cleanup like client.close() won't be reached in infinite loop without signal handling.git add clan_data_fetcher.py
