@@ -109,63 +109,72 @@ def calculate_projected_score(
     current_info: dict,
     forecast_period_minutes: int,
     minutes_remaining_war: float,
-    clans_collection: Collection # Use MongoDB Collection instead of cursor
+    clans_collection: Collection # Use MongoDB Collection
 ):
-    """Calculates projected score for a single clan using MongoDB."""
+    """Calculates projected score for a single clan using MongoDB, robustly."""
 
     projected_points = None # Default
     forecast_gain = None # Keep track of the gain used for projection
+    has_6h_data = False # Default
 
-    # 1. Check 6-hour rule (Logic remains the same, uses current_info dict)
-    has_6h_data = False
-    first_seen_str = current_info.get('first_seen')
-    latest_timestamp_str = current_info.get('latest_timestamp')
-    if latest_timestamp_str:
-        try:
-            latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str)
-            six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
-            if first_seen_str:
-                try:
-                    first_seen_dt = datetime.datetime.fromisoformat(first_seen_str)
-                    if first_seen_dt <= six_hours_ago:
-                        has_6h_data = True
-                except ValueError: pass # Ignore invalid first_seen format
-        except ValueError: pass # Ignore invalid latest_timestamp format
-    else:
-        print(f"Warning: Missing latest_timestamp for {clan_name}, cannot check 6h rule.")
+    try: # Wrap major logic in try/except
+        # 1. Check 6-hour rule
+        first_seen_str = current_info.get('first_seen')
+        latest_timestamp_str = current_info.get('latest_timestamp')
+        latest_ts_dt = None # Initialize
 
+        if latest_timestamp_str:
+            try:
+                latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str)
+                six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
+                if first_seen_str:
+                    try:
+                        first_seen_dt = datetime.datetime.fromisoformat(first_seen_str)
+                        if first_seen_dt <= six_hours_ago:
+                            has_6h_data = True
+                    except ValueError: pass # Ignore invalid first_seen format
+            except ValueError:
+                print(f"Warning: Invalid latest_timestamp format for {clan_name}: {latest_timestamp_str}")
+        else:
+            print(f"Warning: Missing latest_timestamp for {clan_name}, cannot check 6h rule.")
 
-    # 2. Fetch past data for forecast (if rule passed) using MongoDB Collection
-    if has_6h_data and minutes_remaining_war > 0 and forecast_period_minutes > 0:
-        past_points_forecast = None
-        try:
-            # Ensure latest_ts_dt was successfully created above
-            if latest_timestamp_str: # Check again for safety
-                 latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str) # Re-get in case of outer except
+        # 2. Fetch past data for forecast (only if rule passed)
+        if has_6h_data and minutes_remaining_war > 0 and forecast_period_minutes > 0 and latest_ts_dt:
+            past_points_forecast = None
+            try: # Add specific try-except around the database query inside helper
                  target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period_minutes)
-                 # Use timezone-aware comparison if needed, assuming UTC for now
-                 # target_forecast_past_ts_str = target_forecast_past_dt.isoformat()
-
-                 # MongoDB query to find the latest doc at or before the target time
                  query_filter = {
                      "clan_name": clan_name,
-                     "timestamp": {"$lte": target_forecast_past_dt} # Use datetime obj directly
+                     "timestamp": {"$lte": target_forecast_past_dt.replace(tzinfo=datetime.timezone.utc)}
                  }
                  sort_order = [("timestamp", pymongo.DESCENDING)]
-                 result_doc = clans_collection.find_one(query_filter, sort=sort_order)
+                 projection = {"_id": 0, "current_points": 1}
+                 result_doc = clans_collection.find_one(query_filter, projection=projection, sort=sort_order)
 
                  if result_doc:
                      past_points_forecast = result_doc.get('current_points')
 
-        except Exception as q_err:
-            print(f"Error querying past forecast data for {clan_name}: {q_err}")
+            except Exception as q_err:
+                # Log error but allow function to continue and return defaults
+                print(f"ERROR querying past forecast data inside helper for {clan_name}: {q_err}"); sys.stderr.flush()
+                past_points_forecast = None # Ensure it's None if query fails
 
-        # 3. Calculate Projection (if rule passed and past data found)
-        if past_points_forecast is not None:
-            forecast_gain = current_info['current_points'] - past_points_forecast
-            if forecast_period_minutes > 0: # Avoid division by zero
-                gain_rate_per_minute = forecast_gain / forecast_period_minutes
-                projected_points = current_info['current_points'] + (gain_rate_per_minute * minutes_remaining_war)
+            # 3. Calculate Projection (if rule passed and past data found)
+            if past_points_forecast is not None:
+                if 'current_points' in current_info:
+                    forecast_gain = current_info['current_points'] - past_points_forecast
+                    if forecast_period_minutes > 0:
+                        gain_rate_per_minute = forecast_gain / forecast_period_minutes
+                        projected_points = current_info['current_points'] + (gain_rate_per_minute * minutes_remaining_war)
+                else:
+                    print(f"Warning: Missing current_points for {clan_name} in projection calculation.")
+
+    except Exception as helper_err:
+         print(f"ERROR occurred within calculate_projected_score for {clan_name}: {helper_err}"); sys.stderr.flush()
+         # Ensure defaults are returned on any major error within the helper
+         projected_points = None
+         has_6h_data = False
+         forecast_gain = None
 
     # Return projection, rule status, and the gain used for forecast
     return projected_points, has_6h_data, forecast_gain
