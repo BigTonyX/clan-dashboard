@@ -14,7 +14,7 @@ from pymongo.collection import Collection
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- MongoDB Atlas Connection ---
-MONGO_CONNECTION_STRING = "mongodb+srv://littlebombcoc:85f5OXE7J9FJ1Fs4@clan-dashboard-cluster.cxlydgv.mongodb.net/?retryWrites=true&w=majority&appName=clan-dashboard-cluster" # PASTE YOUR COPIED STRING HERE
+MONGO_CONNECTION_STRING = os.environ.get("MONGO_URI")
 DB_NAME = "clan_dashboard_db" # Use the same database name as in the fetcher
 
 # Create the FastAPI app instance
