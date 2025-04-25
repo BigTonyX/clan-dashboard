@@ -110,68 +110,73 @@ def calculate_projected_score(
     current_info: dict,
     forecast_period_minutes: int,
     minutes_remaining_war: float,
-    clans_collection: Collection # Use MongoDB Collection type hint
+    clans_collection: Collection # Use MongoDB Collection
 ):
-    """Calculates projected score for a single clan using MongoDB, robustly."""
-    print(f"DEBUG HELPER: Calculating projection for {clan_name}..."); sys.stdout.flush()
+    """ Calculates projected score for a single clan using MongoDB, fetching first_seen. """
+    # Removed internal debug prints for brevity now we know the issue
+    # print(f"DEBUG HELPER: Calculating projection for {clan_name}..."); sys.stdout.flush()
 
     projected_points = None; forecast_gain = None; has_6h_data = False
+    first_seen_dt = None # Initialize variable for first_seen datetime
 
     try:
-        # 1. Check 6-hour rule
-        first_seen_str = current_info.get('first_seen')
+        # 1. Get the actual 'first_seen' timestamp from the DB for this clan
+        # Find the earliest document for this clan that HAS a first_seen field
+        first_seen_doc = clans_collection.find_one(
+            {"clan_name": clan_name, "first_seen": {"$ne": None}}, # Find where first_seen is not null
+            sort=[("timestamp", pymongo.ASCENDING)], # Get the oldest one
+            projection={"first_seen": 1} # Only need the first_seen field
+        )
+        if first_seen_doc and isinstance(first_seen_doc.get('first_seen'), datetime.datetime):
+            first_seen_dt = first_seen_doc['first_seen']
+            # print(f"DEBUG: Found first_seen={first_seen_dt.isoformat()} for {clan_name}") # Optional debug
+        # else: # Optional debug
+            # print(f"DEBUG: Did not find valid first_seen in DB for {clan_name}")
+
+        # 2. Check 6-hour rule using the fetched first_seen_dt
         latest_timestamp_str = current_info.get('latest_timestamp')
-
-        # --- ADDED DEBUG PRINT HERE ---
-        print(f"DEBUG HELPER Check Input: clan={clan_name}, first_seen='{first_seen_str}', latest_ts='{latest_timestamp_str}'"); sys.stdout.flush()
-        # --- END ADDED DEBUG ---
-
-        latest_ts_dt = None # Initialize
-
-        if latest_timestamp_str:
+        if latest_timestamp_str and first_seen_dt: # Need both to compare
             try:
                 latest_ts_dt = datetime.datetime.fromisoformat(latest_timestamp_str)
                 six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
-                if first_seen_str: # Check if string exists/is not None or empty
-                    try:
-                        first_seen_dt = datetime.datetime.fromisoformat(first_seen_str) # Convert
-                        if first_seen_dt <= six_hours_ago: # Compare datetimes
-                            has_6h_data = True
-                            # print(f"DEBUG HELPER: {clan_name} PASSED 6h check"); sys.stdout.flush() # Reduced verbosity
-                        # else: # Reduced verbosity
-                            # print(f"DEBUG HELPER: {clan_name} FAILED 6h check (first_seen={first_seen_str} vs 6h_ago={six_hours_ago.isoformat()})"); sys.stdout.flush()
-                    except ValueError:
-                         print(f"DEBUG HELPER: {clan_name} Invalid first_seen format: '{first_seen_str}'");sys.stdout.flush();pass # Show format error
-                # else: # Log implicitly handled by the return False now
-                     # print(f"DEBUG HELPER: {clan_name} Missing first_seen value."); sys.stdout.flush() # Removed as redundant if check fails
-            except ValueError: print(f"DEBUG HELPER: Invalid latest_timestamp format for {clan_name}: {latest_timestamp_str}");sys.stdout.flush();pass
-        else: print(f"Warning: Missing latest_timestamp for {clan_name}, cannot check 6h rule."); sys.stdout.flush()
+                # Compare directly using datetime objects
+                if first_seen_dt.replace(tzinfo=None) <= six_hours_ago.replace(tzinfo=None): # Naive comparison just in case
+                    has_6h_data = True
+            except Exception as date_err:
+                print(f"Error comparing dates for {clan_name}: {date_err}")
+        # else: # Log implicitly handled by has_6h_data remaining False
+            # print(f"DEBUG: Missing latest_timestamp or first_seen_dt for {clan_name}")
 
-        # (Rest of the function remains the same as the previous version...)
-        # 2. Fetch past data for forecast (only if rule passed)...
+
+        # 3. Fetch past data for forecast (only if rule passed)
         if has_6h_data and minutes_remaining_war > 0 and forecast_period_minutes > 0 and latest_ts_dt:
             past_points_forecast = None
-            try: # Add specific try-except around the database query inside helper
+            try:
                  target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period_minutes)
-                 query_filter = {"clan_name": clan_name, "timestamp": {"$lte": target_forecast_past_dt.replace(tzinfo=datetime.timezone.utc)}}
+                 # Query needs timezone awareness if latest_ts_dt is aware
+                 # Assuming timestamps stored are naive UTC from fetcher
+                 query_filter = {"clan_name": clan_name, "timestamp": {"$lte": target_forecast_past_dt.replace(tzinfo=None)}}
                  sort_order = [("timestamp", pymongo.DESCENDING)]
-                 projection = {"_id": 0, "current_points": 1, "timestamp": 1} # Get timestamp too for debug
+                 projection = {"_id": 0, "current_points": 1}
                  result_doc = clans_collection.find_one(query_filter, projection=projection, sort=sort_order)
+
                  if result_doc:
                      past_points_forecast = result_doc.get('current_points')
-                     # print(f"DEBUG HELPER: {clan_name} - Found past data: points={past_points_forecast} at timestamp={result_doc.get('timestamp').isoformat()}"); sys.stdout.flush() # Removed verbosity
-                 # else: # Removed verbosity
-                     # print(f"DEBUG HELPER: {clan_name} - NO past data found for forecast period."); sys.stdout.flush()
+                     # print(f"DEBUG: Found past forecast points for {clan_name}: {past_points_forecast}")
+                 # else:
+                     # print(f"DEBUG: No past forecast points found for {clan_name}")
 
-                 # 3. Calculate Projection (if rule passed and past data found)
+
+                 # 4. Calculate Projection (if rule passed and past data found)
                  if past_points_forecast is not None:
                      if 'current_points' in current_info:
                          forecast_gain = current_info['current_points'] - past_points_forecast
                          if forecast_period_minutes > 0:
                              gain_rate_per_minute = forecast_gain / forecast_period_minutes
                              projected_points = current_info['current_points'] + (gain_rate_per_minute * minutes_remaining_war)
-                             # print(f"DEBUG HELPER: {clan_name} - Projection calculated: {projected_points}"); sys.stdout.flush() # Removed verbosity
-                     else: print(f"Warning: Missing current_points for {clan_name} in projection calc."); sys.stdout.flush()
+                             # print(f"DEBUG: Projection calculated for {clan_name}: {projected_points}")
+                     else: print(f"Warning: Missing current_points for {clan_name} in projection calc.")
+
             except Exception as q_err:
                 print(f"ERROR querying/calculating past forecast data inside helper for {clan_name}: {q_err}"); sys.stderr.flush()
                 past_points_forecast = None # Ensure reset on error
@@ -180,8 +185,7 @@ def calculate_projected_score(
          print(f"ERROR occurred within calculate_projected_score for {clan_name}: {helper_err}"); sys.stderr.flush()
          projected_points = None; has_6h_data = False; forecast_gain = None
 
-    # Log return values
-    # print(f"DEBUG HELPER: Returning for {clan_name}: proj={projected_points}, 6h={has_6h_data}, gain={forecast_gain}"); sys.stdout.flush() # Reduced verbosity
+    # Return projection, eligibility status, and the gain used for forecast
     return projected_points, has_6h_data, forecast_gain
 
 
