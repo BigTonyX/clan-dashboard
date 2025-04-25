@@ -7,6 +7,7 @@ import datetime                     # Needed for time calculations
 import time                         # Needed to get the current time easily
 import pymongo
 import sys
+import os
 from dotenv import load_dotenv
 load_dotenv()
 from pymongo import MongoClient
