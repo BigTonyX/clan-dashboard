@@ -6,6 +6,7 @@ import requests                     # Needed to call the external API
 import datetime                     # Needed for time calculations
 import time                         # Needed to get the current time easily
 import pymongo
+import sys
 from dotenv import load_dotenv
 load_dotenv()
 from pymongo import MongoClient
