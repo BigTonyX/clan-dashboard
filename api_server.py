@@ -303,104 +303,85 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
 
     return final_dashboard_results
 
-# Endpoint to calculate needs for a specific clan to reach a target rank (OPTIMIZED)
+# Endpoint to calculate needs for a specific clan to reach a target rank (OPTIMIZED & CORRECTED)
 @app.get("/api/clan_reach_target")
 async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_period: int = 360):
-    """
-    Calculates extra points per hour (Optimized with bulk queries).
-    """
+    """ Calculates extra points per hour using MongoDB, optimized with bulk queries. """
     print(f"/api/clan_reach_target called for {clan_name}, target_rank={target_rank}, forecast_period={forecast_period}")
 
     # --- Input Validation ---
     if target_rank <= 0 or target_rank > 250: raise HTTPException(status_code=400, detail="Invalid target_rank.")
     if forecast_period <= 0: raise HTTPException(status_code=400, detail="Invalid forecast_period.")
 
-    client = None; minutes_remaining = 0; war_finish_time_dt = None
+    client = None; minutes_remaining = 0; war_finish_time_dt = None; extra_points_per_hour = None
 
     try:
-        # --- Fetch War End Time --- (Same as before)
-        # (Code for fetching war end time omitted for brevity - keep as is)
+        # --- Fetch War End Time ---
         try:
             countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
             if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
                 finish_time_unix = raw_data["data"]["configData"]["FinishTime"]; war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix); remaining_delta = war_finish_time_dt - datetime.datetime.now()
                 if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
+                else: minutes_remaining = 0 # Handle case where war ended between fetch and now
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
             else: raise HTTPException(status_code=503, detail="Could not get valid war end time")
         except Exception as cd_err: raise HTTPException(status_code=503, detail=f"Could not get war end time: {cd_err}")
-        if minutes_remaining <= 0: return {"extra_points_per_hour": 0}
+
+        if minutes_remaining <= 0: return {"extra_points_per_hour": 0} # Return 0 if war ended
         hours_remaining = minutes_remaining / 60.0
 
-        # --- Connect to MongoDB --- (Same as before)
+        # --- Connect to MongoDB ---
         client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000); db = client[DB_NAME]; clans_collection = db["clans"]; client.admin.command('ping'); print("MongoDB connection successful.")
 
-        # === Query 1: Get Latest Data === (Same as before, fetch Top 250)
+        # === Query 1: Get Latest Data ===
         latest_doc_fetch = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)]);
         if not latest_doc_fetch or not latest_doc_fetch.get('timestamp'): raise HTTPException(status_code=503, detail="No current data.")
         latest_ts_dt = latest_doc_fetch['timestamp']
         query_latest = {"timestamp": latest_ts_dt}
-        latest_docs_cursor = clans_collection.find(query_latest).sort("current_points", pymongo.DESCENDING).limit(250);
-        ranked_latest_list = []
-        for doc in latest_docs_cursor: # Prepare list and convert dates
-             if isinstance(doc.get('timestamp'), datetime.datetime): doc['latest_timestamp'] = doc['timestamp'].isoformat()
-             # Don't convert first_seen here, fetch it separately below
-             ranked_latest_list.append(dict(doc))
-        if not ranked_latest_list: raise HTTPException(status_code=503, detail="No current clan data.")
-        top_clan_names = [c['clan_name'] for c in ranked_latest_list] # Get list of names
+        latest_docs_cursor = clans_collection.find(query_latest, {"_id":0, "clan_name":1, "current_points":1, "timestamp":1}).sort("current_points", pymongo.DESCENDING).limit(250);
+        ranked_latest_map = {doc['clan_name']: doc for doc in latest_docs_cursor} # Store as map keyed by name
+        if not ranked_latest_map: raise HTTPException(status_code=503, detail="No current clan data available.")
+        top_clan_names = list(ranked_latest_map.keys()) # Get names
 
-        # Check if user's clan is in the list
-        user_clan_current_info = next((clan for clan in ranked_latest_list if clan['clan_name'] == clan_name), None)
+        user_clan_current_info = ranked_latest_map.get(clan_name)
         if not user_clan_current_info: raise HTTPException(status_code=404, detail=f"Clan '{clan_name}' not found.")
 
         # === OPTIMIZATION: Bulk Queries for History ===
-        first_seen_map = {}
-        past_data_map_forecast = {}
-
         # --- Bulk Query for First Seen Timestamps ---
         print("Executing bulk query for first_seen timestamps...")
-        pipeline_first_seen = [
-            {'$match': {'clan_name': {'$in': top_clan_names}, 'first_seen': {'$ne': None}}},
-            {'$sort': {'timestamp': pymongo.ASCENDING}},
-            {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$first_seen'}}}
-        ]
-        first_seen_results = clans_collection.aggregate(pipeline_first_seen)
-        first_seen_map = {row['_id']: row['first_seen_ts'] for row in first_seen_results}
+        pipeline_first_seen = [ {'$match': {'clan_name': {'$in': top_clan_names}, 'first_seen': {'$ne': None}}}, {'$sort': {'timestamp': pymongo.ASCENDING}}, {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$first_seen'}}} ]
+        first_seen_map = {row['_id']: row['first_seen_ts'] for row in clans_collection.aggregate(pipeline_first_seen)}
         print(f"Found first_seen data for {len(first_seen_map)} clans.")
 
         # --- Bulk Query for Past Forecast Data ---
         print(f"Executing bulk query for past forecast data (period={forecast_period} min)...")
         target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period)
-        pipeline_past_forecast = [
-            { '$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_forecast_past_dt} }},
-            { '$sort': {'timestamp': pymongo.DESCENDING} },
-            { '$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }}
-        ]
-        past_forecast_results = clans_collection.aggregate(pipeline_past_forecast)
-        past_data_map_forecast = {row['_id']: row['past_points_forecast'] for row in past_forecast_results}
+        pipeline_past_forecast = [ {'$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_forecast_past_dt} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }} ]
+        past_data_map_forecast = {row['_id']: row['past_points_forecast'] for row in clans_collection.aggregate(pipeline_past_forecast)}
         print(f"Found past forecast data for {len(past_data_map_forecast)} clans.")
-        # === End Optimization ===
 
-        # === Calculate Projections In Python (No Helper Call Needed) ===
+        # === Calculate Projections In Python ===
         print("Calculating projections...")
         projections = {} # clan_name -> projected_score
         projection_eligibility = {} # clan_name -> bool (has_6h_data)
         six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
 
-        for clan_info in ranked_latest_list:
-            c_name = clan_info['clan_name']
-            current_points = clan_info['current_points']
+        for c_name in top_clan_names:
+            current_info = ranked_latest_map[c_name]
+            current_points = current_info['current_points']
             projected_points = None # Default
             has_6h_data = False
 
             # Check 6h rule using pre-fetched first_seen data
             first_seen_dt = first_seen_map.get(c_name)
             if first_seen_dt and isinstance(first_seen_dt, datetime.datetime):
+                # Compare naively, assuming latest_ts_dt is also naive or compatible
                 if first_seen_dt.replace(tzinfo=None) <= six_hours_ago.replace(tzinfo=None):
                     has_6h_data = True
-            projection_eligibility[c_name] = has_6h_data # Store eligibility
+            projection_eligibility[c_name] = has_6h_data
 
             # Calculate projection if eligible and past data exists
-            if has_6h_data and minutes_remaining > 0 and forecast_period > 0:
+            if has_6h_data:
                 past_points = past_data_map_forecast.get(c_name)
                 if past_points is not None:
                      forecast_gain = current_points - past_points
@@ -411,9 +392,15 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
             # Store projection score (or current points if ineligible/no projection)
             projections[c_name] = projected_points if projected_points is not None else current_points
 
-        # === Determine Target Score (Same as before, using projections map) ===
-        projected_ranked_list = sorted(ranked_latest_list, key=lambda x: projections[x['clan_name']], reverse=True)
-        if target_rank > len(projected_ranked_list): raise HTTPException(status_code=400, detail=f"Target rank {target_rank} out of range.")
+        # === Determine Target Score ===
+        # Sort by projection score to find the clan at the target rank
+        # Need info including name and projection score for sorting
+        projection_list_for_sort = [{'clan_name': cn, 'score': projections[cn]} for cn in top_clan_names]
+        projected_ranked_list = sorted(projection_list_for_sort, key=lambda x: x['score'], reverse=True)
+
+        if target_rank > len(projected_ranked_list):
+            raise HTTPException(status_code=400, detail=f"Target rank {target_rank} out of range.")
+
         target_rank_clan_name = projected_ranked_list[target_rank - 1]['clan_name']
         target_rank_projected_score = projections[target_rank_clan_name]
 
@@ -422,25 +409,27 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
         target_clan_eligible = projection_eligibility.get(target_rank_clan_name, False)
         all_projections_valid = user_clan_eligible and target_clan_eligible
 
-        # === Calculate Extra Points (Same as before) ===
+        # === Calculate Extra Points ===
         user_clan_projected_score = projections[clan_name]
         score_difference = target_rank_projected_score - user_clan_projected_score
-        extra_points_per_hour = None
 
-        if not all_projections_valid: print("Calculation not possible due to projection ineligibility.")
-        elif score_difference <= 0: extra_points_per_hour = 0
+        if not all_projections_valid:
+            print("Calculation not possible due to projection ineligibility.")
+            extra_points_per_hour = None # Remains None
+        elif score_difference <= 0:
+            extra_points_per_hour = 0
         else:
             if hours_remaining <= 0: extra_points_per_hour = float('inf')
             else: extra_points_per_hour = score_difference / hours_remaining
 
-    # --- Error Handling & Connection Closing (Same as before) ---
+    # --- Error Handling & Connection Closing ---
     except pymongo.errors.ConnectionFailure as e: print(f"MongoDB connection error: {e}"); raise HTTPException(status_code=503, detail="DB connection error.")
     except HTTPException: raise
     except Exception as e: print(f"Unexpected error: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
     finally:
         if client: client.close(); print("MongoDB connection closed for /api/clan_reach_target.")
 
-    # Format final result (Same as before)
+    # Format final result
     if extra_points_per_hour is None: result_value = None
     elif extra_points_per_hour == float('inf'): result_value = "Infinity"
     else: result_value = round(extra_points_per_hour)
