@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from pymongo import MongoClient
 from pymongo.collection import Collection
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- MongoDB Atlas Connection ---
 MONGO_CONNECTION_STRING = "mongodb+srv://littlebombcoc:85f5OXE7J9FJ1Fs4@clan-dashboard-cluster.cxlydgv.mongodb.net/?retryWrites=true&w=majority&appName=clan-dashboard-cluster" # PASTE YOUR COPIED STRING HERE
@@ -18,6 +19,34 @@ DB_NAME = "clan_dashboard_db" # Use the same database name as in the fetcher
 
 # Create the FastAPI app instance
 app = FastAPI(title="Clan Dashboard API", version="0.1.0")
+# Create the FastAPI app instance (This line should already exist)
+app = FastAPI(title="Clan Dashboard API", version="0.1.0")
+
+# --- CORS Middleware ---
+# Define allowed origins (domains) that can access your API
+# Using ["*"] allows all origins, which is simple for development
+# and okay for a public API like this.
+# For more security later, you might restrict this to the specific domain
+# where your frontend will eventually be hosted.
+# Adding "null" specifically allows requests from local file:/// pages.
+origins = [
+    "*", # Allows all origins
+    # Or be more specific:
+    # "null", # Allow local file:/// origin
+    # "http://localhost", # Allow local development server
+    # "http://127.0.0.1",
+    # Add your future frontend deployment URL here e.g. "https://your-frontend.onrender.com"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # List of origins allowed
+    allow_credentials=True,    # Allow cookies (not needed now, but common)
+    allow_methods=["*"],       # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],       # Allow all headers
+)
+# --- End CORS Middleware ---
+
 
 # Define a basic 'root' endpoint
 @app.get("/")
