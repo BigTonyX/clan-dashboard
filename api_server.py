@@ -136,139 +136,135 @@ async def get_countdown():
 
 
 
-# Dashboard endpoint
+# Dashboard endpoint (OPTIMIZED)
 @app.get("/api/dashboard")
 async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
-    """ Fetches and calculates clan data from MongoDB for the dashboard. """
+    """ Fetches and calculates clan data from MongoDB using bulk queries. """
     print(f"/api/dashboard called with time_period={time_period}, forecast_period={forecast_period}")
 
-    client = None  # Initialize client
-    dashboard_results = [] # Final list we will return
-    minutes_remaining = 0
-    war_finish_time_dt = None
+    client = None; dashboard_results = []; minutes_remaining = 0; war_finish_time_dt = None
 
     try:
         # --- Fetch War End Time ---
-        try:
+        try: # Fetch countdown data
             countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
             if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
                 finish_time_unix = raw_data["data"]["configData"]["FinishTime"]; war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix); remaining_delta = war_finish_time_dt - datetime.datetime.now()
                 if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
-            else: print("Could not get valid war end time from countdown API.")
-        except Exception as cd_err: print(f"Error fetching or processing war end time: {cd_err}") # Continue even if countdown fails
+            else: print("Could not get valid war end time.")
+        except Exception as cd_err: print(f"Error fetching war end time: {cd_err}") # Continue even if countdown fails
 
         # --- Connect to MongoDB ---
-        # Add serverSelectionTimeoutMS to handle connection issues faster
-        client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000)
-        db = client[DB_NAME]
-        clans_collection = db["clans"]
-        # Test connection using ping
-        client.admin.command('ping')
-        print("MongoDB connection successful for dashboard.")
+        client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000); db = client[DB_NAME]; clans_collection = db["clans"]; client.admin.command('ping'); print("MongoDB connection successful for dashboard.")
 
         # === Get Latest Timestamp ===
-        latest_doc = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)])
-        if not latest_doc or not latest_doc.get('timestamp'):
-            print("No data found in clans collection.")
-            if client: client.close() # Close client before returning
-            return []
-        latest_ts_dt = latest_doc['timestamp'] # This is already a datetime object from pymongo
-        latest_timestamp_str = latest_ts_dt.isoformat() # For potential string use
-        print(f"Latest timestamp in DB: {latest_timestamp_str}")
+        latest_doc = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)]);
+        if not latest_doc or not latest_doc.get('timestamp'): print("No data found."); return []
+        latest_ts_dt = latest_doc['timestamp']; latest_timestamp_str = latest_ts_dt.isoformat(); print(f"Latest timestamp: {latest_timestamp_str}")
 
         # === Query 1: Get Latest Data for Top 25 ===
-        print("Executing query 1: Get latest top 25 clan data...")
-        # Define projection for needed fields
-        projection_latest = {"_id": 0, "clan_name": 1, "current_points": 1, "members": 1, "timestamp": 1, "first_seen": 1}
-        latest_docs_cursor = clans_collection.find(
-            {"timestamp": latest_ts_dt}, # Filter by exact latest timestamp
-            projection=projection_latest
-        ).sort("current_points", pymongo.DESCENDING).limit(25)
-
+        print("Executing query 1: Get latest top 25 data...")
+        query_latest = {"timestamp": latest_ts_dt}
+        projection_latest = {"_id":0, "clan_name":1, "current_points":1, "members":1, "timestamp":1} # Only fetch needed fields initially
+        latest_docs_cursor = clans_collection.find(query_latest, projection=projection_latest).sort("current_points", pymongo.DESCENDING).limit(25);
         ranked_latest_list = []
         rank = 1
         for doc in latest_docs_cursor:
-             doc['latest_timestamp'] = doc['timestamp'].isoformat() # Add ISO string version
+             doc['latest_timestamp'] = doc['timestamp'].isoformat() # Add string version
              doc['current_rank'] = rank
-             # Convert datetime objects to string for consistency before processing if needed
-             if isinstance(doc.get('first_seen'), datetime.datetime):
-                   doc['first_seen'] = doc['first_seen'].isoformat()
-             if isinstance(doc.get('timestamp'), datetime.datetime):
-                   doc['timestamp'] = doc['timestamp'].isoformat() # Should match latest_timestamp
-             ranked_latest_list.append(doc)
+             ranked_latest_list.append(dict(doc)) # Use dict() to ensure mutability if needed
              rank += 1
         print(f"Query 1 processed {len(ranked_latest_list)} rows.")
+        if not ranked_latest_list: return []
+        top_25_clan_names = [row['clan_name'] for row in ranked_latest_list]
 
-        if not ranked_latest_list:
-             if client: client.close()
-             return []
-        top_clan_names = [row['clan_name'] for row in ranked_latest_list]
+        # === Bulk Queries for Historical Data ===
+        first_seen_map = {}; past_data_map_gain = {}; past_data_map_forecast = {}
+        six_hours_ago = latest_ts_dt - datetime.timedelta(hours=6)
 
-        # === Query 2: Get Past Data for X-Minute Gain ===
-        past_data_map_gain = {}
+        # --- Bulk Query for First Seen ---
         try:
-            # Ensure latest_ts_dt is datetime object before using it
-            if isinstance(latest_ts_dt, datetime.datetime):
-                target_past_dt = latest_ts_dt - datetime.timedelta(minutes=time_period)
-                print(f"Target past timestamp for gain calculation: {target_past_dt.isoformat()}")
-                # Use Aggregation pipeline for efficiency
-                pipeline_gain = [
-                    { '$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_past_dt} }},
-                    { '$sort': {'timestamp': pymongo.DESCENDING} },
-                    { '$group': { '_id': '$clan_name', 'past_points': {'$first': '$current_points'}, 'timestamp': {'$first': '$timestamp'} }}
-                ]
-                past_gain_results = clans_collection.aggregate(pipeline_gain)
-                past_data_map_gain = {row['_id']: {"past_points": row['past_points']} for row in past_gain_results}
-                print(f"Gain query returned {len(past_data_map_gain)} results.")
-            else:
-                print("Could not determine latest timestamp for gain calculation.")
+            print("Executing bulk query for first_seen...")
+            pipeline_first_seen = [ {'$match': {'clan_name': {'$in': top_25_clan_names}, 'first_seen': {'$ne': None}}}, {'$sort': {'timestamp': pymongo.ASCENDING}}, {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$first_seen'}}} ]
+            first_seen_map = {row['_id']: row['first_seen_ts'] for row in clans_collection.aggregate(pipeline_first_seen)}
+            print(f"Found first_seen data for {len(first_seen_map)} clans.")
+        except Exception as fs_err: print(f"Error querying first_seen: {fs_err}")
+
+        # --- Bulk Query for Gain Data ---
+        try:
+            target_past_dt_gain = latest_ts_dt - datetime.timedelta(minutes=time_period)
+            print(f"Target past timestamp for gain: {target_past_dt_gain.isoformat()}")
+            pipeline_past_gain = [ {'$match': { 'clan_name': {'$in': top_25_clan_names}, 'timestamp': {'$lte': target_past_dt_gain} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points': {'$first': '$current_points'} }} ]
+            past_data_map_gain = {row['_id']: row['past_points'] for row in clans_collection.aggregate(pipeline_past_gain)}
+            print(f"Gain query returned {len(past_data_map_gain)} results.")
         except Exception as q2_err: print(f"Error in gain aggregation: {q2_err}")
 
+        # --- Bulk Query for Forecast Data ---
+        try:
+            target_past_dt_forecast = latest_ts_dt - datetime.timedelta(minutes=forecast_period)
+            print(f"Target past timestamp for forecast: {target_past_dt_forecast.isoformat()}")
+            pipeline_past_forecast = [ {'$match': { 'clan_name': {'$in': top_25_clan_names}, 'timestamp': {'$lte': target_past_dt_forecast} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }} ]
+            past_data_map_forecast = {row['_id']: row['past_points_forecast'] for row in clans_collection.aggregate(pipeline_past_forecast)}
+            print(f"Forecast query returned {len(past_data_map_forecast)} results.")
+        except Exception as q3_err: print(f"Error in forecast aggregation: {q3_err}")
 
-        # === Combine Data and Calculate All Fields ===
-        print("Calculating all fields using helper...")
-        processed_results = {}
+        # === Calculate All Fields In Python ===
+        print("Calculating all fields...")
+        projections = {} # Store projections for forecast ranking
 
-        # --- First pass: Use helper to get projection, calculate gain ---
-        for i, current_clan_info in enumerate(ranked_latest_list):
-            clan_name = current_clan_info['clan_name']
-            clan_result = current_clan_info.copy()
+        # --- First pass: Calculate Gain, Check 6h, Calc Projection ---
+        for clan_result in ranked_latest_list: # Modify the list in place
+            clan_name = clan_result['clan_name']
+            current_points = clan_result['current_points']
 
             # Calculate X-Minute Gain
-            past_info_gain = past_data_map_gain.get(clan_name)
-            clan_result['x_minute_gain'] = (current_clan_info['current_points'] - past_info_gain['past_points']) if past_info_gain else None
+            past_points_gain = past_data_map_gain.get(clan_name)
+            clan_result['x_minute_gain'] = (current_points - past_points_gain) if past_points_gain is not None else None
 
-            # Call helper function for projection (passing collection now)
-            projected_points, has_6h_data, _ = calculate_projected_score(
-                clan_name=clan_name, current_info=clan_result, forecast_period_minutes=forecast_period,
-                minutes_remaining_war=minutes_remaining, clans_collection=clans_collection
-            )
-            clan_result['projected_points'] = projected_points
-            clan_result['has_6h_data'] = has_6h_data
+            # Check 6-hour rule
+            has_6h_data = False
+            first_seen_dt = first_seen_map.get(clan_name)
+            if first_seen_dt and isinstance(first_seen_dt, datetime.datetime):
+                if first_seen_dt.replace(tzinfo=None) <= six_hours_ago.replace(tzinfo=None): has_6h_data = True
+            clan_result['has_6h_data'] = has_6h_data # Keep temporarily
 
-            processed_results[clan_name] = clan_result
+            # Calculate Projection Score
+            projected_points = None
+            if has_6h_data and minutes_remaining > 0 and forecast_period > 0:
+                past_points_forecast = past_data_map_forecast.get(clan_name)
+                if past_points_forecast is not None:
+                    forecast_gain = current_points - past_points_forecast
+                    if forecast_period > 0:
+                        gain_rate_per_minute = forecast_gain / forecast_period
+                        projected_points = current_points + (gain_rate_per_minute * minutes_remaining)
+            # Store projection score or fallback to current points for ranking
+            projections[clan_name] = projected_points if projected_points is not None else current_points
 
-        # --- Second pass: Calculate Gap, TimeToCatch, and Forecast Rank ---
-        projected_ranked_list = sorted(processed_results.values(), key=lambda x: x['projected_points'] if x['projected_points'] is not None else x['current_points'], reverse=True)
+        # --- Rank Projections ---
+        # Create list including projection score for sorting
+        list_for_proj_rank = [{'clan_name': cn, 'score': projections[cn]} for cn in top_25_clan_names]
+        projected_ranked_list = sorted(list_for_proj_rank, key=lambda x: x['score'], reverse=True)
         forecast_ranks = {clan['clan_name']: rank + 1 for rank, clan in enumerate(projected_ranked_list)}
 
+        # --- Second pass: Calculate Gap, TimeToCatch, Assign Forecast Rank ---
         final_dashboard_results = []
-        for i, current_clan_info in enumerate(ranked_latest_list):
-            clan_name = current_clan_info['clan_name']
-            clan_result = processed_results[clan_name]
+        for i, clan_result in enumerate(ranked_latest_list):
+            clan_name = clan_result['clan_name']
 
             # Calculate Gap
-            clan_result['gap'] = 0 if clan_result['current_rank'] == 1 else ranked_latest_list[i-1]['current_points'] - current_clan_info['current_points']
+            clan_result['gap'] = 0 if clan_result['current_rank'] == 1 else ranked_latest_list[i-1]['current_points'] - clan_result['current_points']
 
             # Calculate Time to Catch
-            time_to_catch_str = "N/A"; gain_difference = 0 # Initialize gain_difference
+            time_to_catch_str = "N/A"; gain_difference = 0
             if clan_result['current_rank'] > 1:
-                clan_above_name=ranked_latest_list[i-1]['clan_name']; clan_above_result=processed_results.get(clan_above_name);
-                current_gain=clan_result['x_minute_gain']; above_gain=clan_above_result.get('x_minute_gain') if clan_above_result else None;
+                clan_above_name = ranked_latest_list[i-1]['clan_name']
+                # Need the gain for the clan above, look it up in our processed list
+                clan_above_result = next((c for c in ranked_latest_list if c['clan_name'] == clan_above_name), None)
+                current_gain = clan_result['x_minute_gain']
+                above_gain = clan_above_result.get('x_minute_gain') if clan_above_result else None
                 if (current_gain is not None and above_gain is not None and isinstance(current_gain,(int,float)) and isinstance(above_gain,(int,float)) and current_gain > above_gain):
-                    gain_difference=current_gain-above_gain;
-                    # Nested check - only calculate if gain_difference is positive
+                    gain_difference = current_gain - above_gain
                     if gain_difference > 0 and time_period > 0:
                         try: minutes_to_catch=(clan_result['gap']*time_period)/gain_difference; time_to_catch_str=format_timedelta(datetime.timedelta(minutes=minutes_to_catch));
                         except Exception as calc_err: print(f"Error calculating T2C for {clan_name}: {calc_err}"); time_to_catch_str = "Error"
@@ -277,29 +273,20 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
             # Assign Forecast Rank
             clan_result['forecast'] = forecast_ranks.get(clan_name) if clan_result['has_6h_data'] else None
 
-            # Remove helper fields & ensure correct timestamp format
-            del clan_result['projected_points']
+            # Remove helper field
             del clan_result['has_6h_data']
-            # Clean up timestamp fields for final JSON output
-            if 'timestamp' in clan_result: del clan_result['timestamp'] # Remove original datetime object if present
-            if isinstance(clan_result.get('first_seen'), datetime.datetime): # Ensure first_seen is string
-                clan_result['first_seen'] = clan_result['first_seen'].isoformat()
-
+            # Clean up timestamps for JSON
+            if isinstance(clan_result.get('first_seen'), datetime.datetime): clan_result['first_seen'] = clan_result['first_seen'].isoformat()
+            if 'timestamp' in clan_result: del clan_result['timestamp']
 
             final_dashboard_results.append(clan_result)
 
     # --- Error Handling & Connection Closing ---
-    except pymongo.errors.ConnectionFailure as e:
-        print(f"MongoDB connection error in /api/dashboard: {e}")
-        raise HTTPException(status_code=503, detail="Database connection error.")
-    except Exception as e:
-        print(f"Unexpected error in /api/dashboard: {e}")
-        import traceback; traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+    except pymongo.errors.ConnectionFailure as e: print(f"MongoDB connection error: {e}"); raise HTTPException(status_code=503, detail="DB connection error.")
+    except HTTPException: raise
+    except Exception as e: print(f"Unexpected error: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
     finally:
-        if client:
-            client.close()
-            print("MongoDB connection closed for /api/dashboard.")
+        if client: client.close(); print("MongoDB connection closed for /api/dashboard.")
 
     return final_dashboard_results
 
