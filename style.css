@@ -1,0 +1,416 @@
+/* Basic Reset / Body Styles */
+:root {
+    --bg-color: #1e1e1e;
+    --surface-color: #2a2a2a;
+    --surface-alt-color: #2f2f2f;
+    --text-color: #e0e0e0;
+    --text-muted-color: #aaa;
+    --primary-color: #36A2EB; /* Blue accent */
+    --highlight-color: #6a6a3a;
+    --border-color: #444;
+    --border-light-color: #555;
+    --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --border-radius: 5px;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 20px;
+    line-height: 1.6;
+}
+
+/* Overall page container */
+.page-container {
+    max-width: 1100px; /* Max width for the whole content */
+    margin: 0 auto;    /* Center the page container */
+    padding: 0 10px; /* Padding inside container */
+}
+
+/* Headings */
+h1, h2 {
+    color: #ffffff;
+    padding-bottom: 8px;
+    margin-top: 25px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-light-color);
+    text-align: left; /* Default to left align */
+}
+h1 { /* Main Title */
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 25px;
+    border-bottom: none;
+    font-size: 2em;
+}
+
+/* Header/Status Bar */
+header#status-bar {
+    background-color: var(--surface-color);
+    padding: 12px 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 25px; /* Increased margin */
+    text-align: center;
+    font-size: 1em;
+    /* Removed max-width and centering - let it fill container or align left */
+}
+#countdown-timer { font-weight: bold; color: var(--primary-color); }
+#last-updated { color: var(--text-muted-color); font-size: 0.9em; margin-left: 10px;}
+
+
+/* Generic Section Styling */
+section, main {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 25px;
+    /* Ensure sections are left-aligned by default */
+    margin-left: 0;
+    margin-right: 0;
+}
+/* Remove background/padding from leaderboard wrapper if sections have it */
+main#leaderboard-area {
+     background-color: transparent;
+     padding: 0;
+     border: none;
+}
+/* Remove border from comparison area if sections have it */
+#comparison-area {
+     border-top: none;
+     margin-top: 0; /* Handled by section margin */
+     padding-top: 0;
+     background-color: transparent; /* Let inner boxes handle background */
+     padding: 0;
+     border: none;
+}
+
+/* Controls Area - Heading outside flex/grid */
+#controls-area {
+    background-color: var(--surface-color);
+    padding: 20px; /* Keep padding when expanded */
+    border-radius: var(--border-radius);
+    margin-bottom: 25px;
+    margin-left: 0;
+    margin-right: 0;
+    overflow: hidden; /* Ensure content is fully hidden when collapsed */
+    transition: padding 0.3s ease-in-out; /* Smooth transition for padding */
+  }
+  
+  #controls-area.collapsed {
+    padding-top: 10px; /* Reduce top padding when collapsed - adjusted further */
+    padding-bottom: 10px; /* Reduce bottom padding when collapsed - adjusted further */
+  }
+  
+  #controls-area > h2 { /* Target the h2 *inside* #controls-area */
+    margin-top: 0;
+    padding-bottom: 10px; /* Keep some padding for spacing when expanded */
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: none;
+    transition: padding-bottom 0.3s ease-in-out; /* Smooth transition for h2 padding */
+  }
+  
+  #controls-area.collapsed > h2 {
+    padding-bottom: 5px; /* Reduce padding below "Controls" when collapsed - CORRECTED VALUE */
+  }
+  
+  #controls-area > h2::after {
+    content: '\25BE';
+    font-size: 1.2em;
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  #controls-area.collapsed > h2::after {
+    transform: rotate(-90deg);
+  }
+  
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px 30px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-light-color);
+  }
+  
+  #controls-area.collapsed .controls-grid {
+    display: none;
+  }
+  
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px 30px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-light-color);
+  }
+  
+  #controls-area.collapsed .controls-grid {
+    display: none;
+  }
+  
+  .control-group {
+    padding: 0;
+    border: none;
+  }
+  
+  .control-group > label:first-child { /* Main label for group */
+    display: block;
+    font-weight: bold;
+    margin-bottom: 10px; /* More space */
+    color: #fff;
+  }
+  
+  /* Radio button styling (no changes needed here) */
+  .control-group div.radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 15px; /* Spacing for radios */
+  }
+  
+  .control-group label:has(input[type="radio"]) {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0;
+    font-weight: normal;
+    cursor: pointer;
+    background-color: var(--bg-color); /* Give radios slight background */
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    width: 80px; /* Adjust this value as needed */
+    /* Remove justify-content: center; */
+  }
+  
+  .control-group input[type="radio"] {
+    margin-right: 6px;
+    accent-color: var(--primary-color); /* Style the check part */
+  }
+  
+  /* Tracked Clan / Target Rank group styling (no changes needed here) */
+  .control-group.inline-inputs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+  }
+  
+  .control-group.inline-inputs label {
+    margin-bottom: 0;
+    display: inline; /* Keep labels inline */
+    font-weight: bold; /* Make these labels bold too */
+    color: #fff;
+  }
+
+
+/* Reach Target Display Box */
+#reach-target-display {
+    background-color: var(--surface-alt-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 15px 20px;
+    margin: 25px 0; /* Vertical margin only, align left */
+    text-align: center;
+    font-size: 1.1em;
+}
+#reach-target-display p { margin: 0; }
+#reach-target-display strong { color: var(--primary-color); }
+
+/* Leaderboard Table Styling */
+#leaderboard-table {
+    max-width: 1200px;   /* Match controls */
+    width: 100%;        /* Use available width up to max-width */
+    border-collapse: collapse;
+    /* margin-top: 10px; (Let H2 handle top margin) */
+    font-size: 0.95em;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+#leaderboard-table th,
+#leaderboard-table td {
+    border: 1px solid var(--border-color);
+    padding: 10px 15px;
+    text-align: center;
+    white-space: nowrap;
+}
+#leaderboard-table th {
+    background-color: #333;
+    color: #fff;
+    font-weight: 600;
+    position: sticky; /* Make header sticky if table scrolls */
+    top: 0;
+    z-index: 1;
+}
+#leaderboard-table tbody tr:nth-child(even) { background-color: var(--surface-color); }
+#leaderboard-table tbody tr:hover { background-color: #404040; }
+
+/* Highlight Style */
+.highlight { background-color: var(--highlight-color) !important; font-weight: bold; color: #fff !important; }
+
+/* --- Modern Form Element Styling --- */
+select, input[type="number"], button, input[type="text"] { /* Added text */
+    background-color: #333;
+    color: var(--text-color);
+    border: 1px solid var(--border-light-color);
+    border-radius: 4px;
+    padding: 8px 12px; /* Consistent padding */
+    font-size: 1em;
+    font-family: inherit;
+    margin: 0; /* Reset margins */
+    box-sizing: border-box; /* Include padding/border in width */
+}
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23e0e0e0' height='24' viewBox='0 0 24 24' width='24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3Cpath d='M0 0h24v24H0z' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 1.2em;
+    padding-right: 35px; /* More space for arrow */
+    cursor: pointer;
+}
+button { cursor: pointer; background-color: var(--primary-color); color: #fff; font-weight: bold; border: none; transition: background-color 0.2s ease; }
+button:hover { filter: brightness(1.15); }
+input[type="number"] { width: 80px; } /* Adjust width */
+
+/* Comparison Section Styling */
+#comparison-controls {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 25px;
+    display: grid; /* Use grid for layout */
+    grid-template-columns: 1fr auto; /* Two columns: full width for controls, auto for button */
+    gap: 20px;
+    align-items: center; /* Align items vertically */
+    margin-left: 0;
+    margin-right: 0; /* Align left */
+}
+  
+#comparison-controls .control-group:first-child { /* Comparison Time Period */
+    grid-column: 1 / 2; /* Span only the first column */
+    grid-row: 1 / 2;    /* Explicitly place in the first row */
+    align-self: center; /* Vertically align with the button */
+}
+  
+#comparison-controls .control-group:nth-child(2) { /* Clans to Compare */
+    grid-column: 1 / 3; /* Span both columns */
+}
+  
+#comparison-controls button {
+    padding: 10px 15px;
+    grid-column: 2 / 3; /* Place button in the second column */
+    justify-self: end; /* Align to the right */
+}
+  
+#comparison-controls .control-group > label:first-child {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #fff;
+}
+  
+#comparison-controls .control-group .radio-group.horizontal-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px; /* Horizontal spacing between radios */
+}
+  
+#comparison-controls .control-group .radio-group.horizontal-radio-group label {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0;
+    font-weight: normal;
+    cursor: pointer;
+    background-color: var(--bg-color);
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 5px; /* Add some vertical spacing */
+}
+  
+#comparison-controls .control-group .radio-group.horizontal-radio-group input[type="radio"] {
+    margin-right: 6px;
+    accent-color: var(--primary-color);
+}
+  
+#comparison-chart-container {
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    height: 450px;
+    margin: 25px 0; /* Align left */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Add shadow */
+}
+  
+#comparison-selection-area {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%; 
+}
+  
+#selected-clan-pills {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    width: 100%; /* Make selected pills full width */
+}
+  
+.clan-pill { /* Styles for selected pills at the top */
+    background-color: var(--primary-color); /* Blue when selected */
+    color: var(--text-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center; /* Center text within pill */
+    width: auto; /* Adjust width to content */
+    margin-right: 8px; /* Add some spacing between selected pills */
+    margin-bottom: 5px;
+}
+  
+.remove-pill {
+    margin-left: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+    line-height: 1;
+    color: var(--text-muted-color);
+}
+  
+.remove-pill:hover {
+    color: var(--text-color);
+}
+  
+#all-clan-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%; /* Make pills span full width */
+}
+  
+.clan-option-pill {
+    background-color: var(--surface-alt-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    cursor: pointer;
+    width: auto; /* Adjust width to content */
+    text-align: center;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+    margin-right: 8px;
+    margin-bottom: 5px;
+}
+  
+.clan-option-pill.selected {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}

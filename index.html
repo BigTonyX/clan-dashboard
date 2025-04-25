@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clan Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> </head>
+<body>
+
+  <div class="page-container">
+
+    <h1>BigTony's Clan War Dashboard</h1>
+
+    <header id="status-bar">
+      War Time Remaining: <span id="countdown-timer">Loading...</span>
+      | Last Updated: <span id="last-updated">Never</span>
+    </header>
+
+    <section id="controls-area">
+      <h2>Controls</h2>
+      <div class="controls-grid">
+        <div class="control-group">
+          <label>Select Gain Period:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="time_period" value="30" checked> 30m</label>
+            <label><input type="radio" name="time_period" value="60"> 1h</label>
+            <label><input type="radio" name="time_period" value="180"> 3h</label>
+            <label><input type="radio" name="time_period" value="360"> 6h</label>
+            <label><input type="radio" name="time_period" value="720"> 12h</label>
+            <label><input type="radio" name="time_period" value="1440"> 24h</label>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Time to Catch Period:</label>
+          <div class="radio-group">
+            <label><input type="radio" name="forecast_period" value="60" checked> 1h</label>
+            <label><input type="radio" name="forecast_period" value="180"> 3h</label>
+            <label><input type="radio" name="forecast_period" value="360"> 6h</label>
+            <label><input type="radio" name="forecast_period" value="720"> 12h</label>
+            <label><input type="radio" name="forecast_period" value="1080"> 18h</label>
+            <label><input type="radio" name="forecast_period" value="1440"> 24h</label>
+          </div>
+        </div>
+
+        <div class="control-group inline-inputs">
+          <label for="target-clan-select">Tracked Clan:</label>
+          <select id="target-clan-select" name="target_clan">
+            <option value="">-- Select Clan --</option>
+          </select>
+          <label for="target-rank-input">Target Rank:</label>
+          <input type="number" id="target-rank-input" name="target_rank" value="1" min="1" max="250"> </div>
+      </div> </section>
+
+    <section id="reach-target-display">
+          <p>(Reach Target Placeholder)</p>
+    </section>
+
+    <main id="leaderboard-area">
+      <h2>Leaderboard</h2>
+      <table id="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Clan</th>
+            <th>Points</th>
+            <th id="gain-header">Gain (X-Min)</th>
+            <th>Gap</th>
+            <th>Time to Catch</th>
+            <th>Forecast</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body">
+          <tr><td colspan="7">Loading data...</td></tr>
+        </tbody>
+      </table>
+    </main>
+
+    <section id="comparison-area">
+      <h2>Clan Comparison</h2>
+
+      <div id="comparison-controls">
+
+        <div class="control-group">
+            <label>Pick a Time Period to Compare:</label>
+             <div class="radio-group horizontal-radio-group">
+                <label><input type="radio" name="comparison_time_period" value="60" checked> 1 hr</label>
+                <label><input type="radio" name="comparison_time_period" value="360"> 6 hr</label>
+                <label><input type="radio" name="comparison_time_period" value="720"> 12 hr</label>
+                <label><input type="radio" name="comparison_time_period" value="1440"> 1 day</label>
+                <label><input type="radio" name="comparison_time_period" value="4320"> 3 day</label>
+                <label><input type="radio" name="comparison_time_period" value="10080"> 7 days</label>
+             </div>
+          </div>
+
+        <button id="update-comparison-btn">Update Comparison Chart</button>
+
+        <div class="control-group">
+          <label>Clans to Compare (Select up to 3):</label>
+          <div id="comparison-selection-area">
+            <div id="selected-clan-pills">
+              </div>
+            <div id="all-clan-pills">
+              </div>
+          </div>
+          <p class="selection-limit-note">Select up to 3 clans.</p>
+        </div>
+     
+      </div>
+
+        <div id="comparison-chart-container">
+          <canvas id="comparison-chart"></canvas>
+        </div>
+    </section>
+
+  </div> <script src="script.js"></script>
+</body>
+</html>
