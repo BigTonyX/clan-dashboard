@@ -343,22 +343,19 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
 async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_period: int = 360):
     """
     Calculates the extra points per hour a specific clan needs to gain
-    to reach the target rank by the end of the war.
+    to reach the target rank by the end of the war using MongoDB.
     """
     print(f"/api/clan_reach_target called for {clan_name}, target_rank={target_rank}, forecast_period={forecast_period}")
 
-    # --- Input Validation ---
-    if target_rank <= 0 or target_rank > 250: # Basic rank validation
-        raise HTTPException(status_code=400, detail="Invalid target_rank. Must be between 1 and 250.")
-    if forecast_period <= 0:
-         raise HTTPException(status_code=400, detail="Invalid forecast_period. Must be positive.")
+    # --- Input Validation --- (Same as before)
+    if target_rank <= 0 or target_rank > 250: raise HTTPException(status_code=400, detail="Invalid target_rank.")
+    if forecast_period <= 0: raise HTTPException(status_code=400, detail="Invalid forecast_period.")
 
-
-    db_path = "clan_data.db"; conn = None
+    client = None # Initialize client
     minutes_remaining = 0; war_finish_time_dt = None
 
     try:
-        # --- Fetch War End Time --- (Same as in dashboard)
+        # --- Fetch War End Time --- (Same as before)
         try:
             countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
             if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
@@ -368,96 +365,108 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
             else: print("Could not get valid war end time."); raise HTTPException(status_code=503, detail="Could not get war end time")
         except Exception as cd_err: print(f"Error fetching war end time: {cd_err}"); raise HTTPException(status_code=503, detail=f"Could not get war end time: {cd_err}")
 
-        if minutes_remaining <= 0:
-             print("War has ended or ending immediately, cannot calculate needs.")
-             return {"extra_points_per_hour": 0} # Or maybe indicate differently?
-
+        if minutes_remaining <= 0: return {"extra_points_per_hour": 0}
         hours_remaining = minutes_remaining / 60.0
 
-        # --- Database Connection ---
-        conn = sqlite3.connect(db_path); conn.row_factory = sqlite3.Row; cursor = conn.cursor()
+        # --- Connect to MongoDB ---
+        client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000)
+        db = client[DB_NAME]
+        clans_collection = db["clans"]
+        client.admin.command('ping') # Verify connection
+        print("MongoDB connection successful for clan_reach_target.")
 
-        # === Query Latest Data (Might need more than 25 to find target rank) ===
-        # Let's fetch Top 250 to be safer for finding target rank's projected score
-        query_latest = """
-        WITH LatestTimestamp AS ( SELECT MAX(timestamp) as max_ts FROM clans ),
-        RankedClans AS ( SELECT clan_name, current_points, members, timestamp as latest_timestamp, first_seen, RANK() OVER (ORDER BY current_points DESC) as current_rank FROM clans WHERE timestamp = (SELECT max_ts FROM LatestTimestamp) )
-        SELECT * FROM RankedClans WHERE current_rank <= 250 ORDER BY current_rank;
-        """
-        cursor.execute(query_latest); latest_rows = cursor.fetchall()
-        if not latest_rows: raise HTTPException(status_code=503, detail="No current clan data available.")
-        ranked_latest_list = [dict(row) for row in latest_rows]
+        # === Query Latest Data (Fetch more to be safe for ranking) ===
+        query_latest = {"timestamp": latest_doc['timestamp']} if 'latest_doc' in locals() and latest_doc else {} # Reuse latest timestamp if possible
+        if not query_latest: # Fetch latest ts if not already available
+             latest_doc_fetch = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)])
+             if not latest_doc_fetch or not latest_doc_fetch.get('timestamp'): raise HTTPException(status_code=503, detail="No current data.")
+             query_latest = {"timestamp": latest_doc_fetch['timestamp']}
 
-        # Find the specific clan's current data
-        user_clan_current_info = next((clan for clan in ranked_latest_list if clan['clan_name'] == clan_name), None)
+        latest_docs_cursor = clans_collection.find(query_latest).sort("current_points", pymongo.DESCENDING).limit(250)
+        ranked_latest_list = [dict(doc) for doc in latest_docs_cursor]
+        if not ranked_latest_list: raise HTTPException(status_code=503, detail="No current clan data available.")
+
+        # Find user clan's current data more robustly
+        user_clan_current_info = None
+        for clan in ranked_latest_list:
+             # Convert datetime objects fetched from DB to strings for helper compatibility if needed
+             if isinstance(clan.get('timestamp'), datetime.datetime):
+                 clan['latest_timestamp'] = clan['timestamp'].isoformat()
+             if isinstance(clan.get('first_seen'), datetime.datetime):
+                 clan['first_seen'] = clan['first_seen'].isoformat()
+             if clan['clan_name'] == clan_name:
+                 user_clan_current_info = clan
+                 break # Stop once found
+
         if not user_clan_current_info:
              raise HTTPException(status_code=404, detail=f"Clan '{clan_name}' not found in latest Top 250 data.")
 
         # === Calculate Projections for ALL relevant clans ===
-        projections = {} # Store clan_name -> projected_score
-        all_clan_projections_valid = True
+        projections = {}
+        all_projections_valid = True # Assume valid initially
         for clan_info in ranked_latest_list:
             c_name = clan_info['clan_name']
+            # Ensure necessary fields for helper exist before calling
+            if 'latest_timestamp' not in clan_info: continue # Skip if timestamp missing
+
             projected_score, has_6h, _ = calculate_projected_score(
                 clan_name=c_name, current_info=clan_info, forecast_period_minutes=forecast_period,
-                minutes_remaining_war=minutes_remaining, cursor=cursor )
+                minutes_remaining_war=minutes_remaining, clans_collection=clans_collection )
 
-            # Store projection; use current points if projection failed or ineligible
             projections[c_name] = projected_score if (has_6h and projected_score is not None) else clan_info['current_points']
-            # Track if the specific clans we need had valid projections
             if c_name == clan_name and (not has_6h or projected_score is None):
                  print(f"Warning: User clan {clan_name} ineligible for projection.")
-                 all_clan_projections_valid = False # Cannot calculate if user clan invalid
-
+                 all_projections_valid = False
 
         # === Determine Target Score ===
-        # Rank based on projections to find the clan at target_rank
         projected_ranked_list = sorted(ranked_latest_list, key=lambda x: projections[x['clan_name']], reverse=True)
-
         if target_rank > len(projected_ranked_list):
-            raise HTTPException(status_code=400, detail=f"Target rank {target_rank} is out of range for available data.")
+            raise HTTPException(status_code=400, detail=f"Target rank {target_rank} is out of range.")
 
         target_rank_clan_name = projected_ranked_list[target_rank - 1]['clan_name']
         target_rank_projected_score = projections[target_rank_clan_name]
 
-        # Check if the target rank clan had a valid projection (needed for fair comparison)
+        # Check target clan eligibility
         target_rank_clan_current_info = next(clan for clan in ranked_latest_list if clan['clan_name'] == target_rank_clan_name)
-        _, target_rank_has_6h_data, _ = calculate_projected_score(target_rank_clan_name, target_rank_clan_current_info, forecast_period, minutes_remaining, cursor)
+        _, target_rank_has_6h_data, _ = calculate_projected_score(target_rank_clan_name, target_rank_clan_current_info, forecast_period, minutes_remaining, clans_collection)
         if not target_rank_has_6h_data or projections[target_rank_clan_name] == target_rank_clan_current_info['current_points']:
              print(f"Warning: Target rank {target_rank} clan {target_rank_clan_name} ineligible for projection.")
-             all_clan_projections_valid = False # Cannot calculate if target clan invalid
-
+             all_projections_valid = False
 
         # === Calculate Extra Points ===
         user_clan_projected_score = projections[clan_name]
         score_difference = target_rank_projected_score - user_clan_projected_score
+        extra_points_per_hour = None
 
-        if not all_clan_projections_valid:
-             extra_points_per_hour = None # Indicate calculation not possible
+        if not all_projections_valid:
              print("Calculation not possible due to projection ineligibility.")
+             # extra_points_per_hour remains None
         elif score_difference <= 0:
-            extra_points_per_hour = 0 # Already projected to meet or exceed
+            extra_points_per_hour = 0
         else:
-            if hours_remaining <= 0: # Avoid division by zero if war ended
-                 extra_points_per_hour = float('inf') # Needs infinite points if no time left
-            else:
-                 extra_points_per_hour = score_difference / hours_remaining
+            if hours_remaining <= 0: extra_points_per_hour = float('inf')
+            else: extra_points_per_hour = score_difference / hours_remaining
 
-    # --- Error Handling & Connection Closing ---
-    except sqlite3.Error as e: print(f"Database error in /api/clan_reach_target: {e}"); raise HTTPException(status_code=500, detail=f"DB error: {e}")
-    except HTTPException: raise # Re-raise HTTP exceptions directly
-    except Exception as e: print(f"Unexpected error in /api/clan_reach_target: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+    # --- CORRECTED Error Handling & Connection Closing ---
+    except pymongo.errors.ConnectionFailure as e: # Catch PyMongo connection errors
+        print(f"MongoDB connection error in /api/clan_reach_target: {e}")
+        raise HTTPException(status_code=503, detail="Database connection error.")
+    except HTTPException: # Re-raise HTTP exceptions from validation etc.
+         raise
+    except Exception as e: # General catch-all
+        print(f"Unexpected error in /api/clan_reach_target: {e}")
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
     finally:
-        if conn: conn.close(); print("Database connection closed for /api/clan_reach_target.")
+        if client:
+            client.close()
+            print("MongoDB connection closed for /api/clan_reach_target.")
+    # --- End Correction ---
 
-    # Format final result
-    if extra_points_per_hour is None:
-        result_value = None # Or maybe a specific string like "Ineligible"
-    elif extra_points_per_hour == float('inf'):
-        result_value = "Infinity"
-    else:
-        result_value = round(extra_points_per_hour) # Return as integer
-
+    # Format final result (Same as before)
+    if extra_points_per_hour is None: result_value = None
+    elif extra_points_per_hour == float('inf'): result_value = "Infinity"
+    else: result_value = round(extra_points_per_hour)
     return {"extra_points_per_hour": result_value }
 
 # Endpoint to get historical data for comparing clans
