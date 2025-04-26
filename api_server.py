@@ -48,6 +48,8 @@ app.add_middleware(
 )
 # --- End CORS Middleware ---
 
+# --- Global icon cache ---
+ICON_CACHE = {}
 
 # Define a basic 'root' endpoint
 @app.get("/")
@@ -179,6 +181,15 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         print(f"Query 1 processed {len(ranked_latest_list)} rows.")
         if not ranked_latest_list: return []
         top_25_clan_names = [row['clan_name'] for row in ranked_latest_list]
+
+        # --- Lazy-load icon cache for top 25 clans ---
+        clan_details_collection = db["clan_details"]
+        icons_to_fetch = [name for name in top_25_clan_names if name not in ICON_CACHE]
+        if icons_to_fetch:
+            for doc in clan_details_collection.find({"clan_name": {"$in": icons_to_fetch}}, {"clan_name": 1, "icon": 1, "_id": 0}):
+                ICON_CACHE[doc['clan_name']] = doc.get('icon')
+        for clan in ranked_latest_list:
+            clan['icon'] = ICON_CACHE.get(clan['clan_name'])
 
         # === Bulk Queries for Historical Data ===
         first_seen_map = {}; past_data_map_gain = {}; past_data_map_forecast = {}
