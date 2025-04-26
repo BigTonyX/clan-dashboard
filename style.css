@@ -6,7 +6,7 @@
     --text-color: #e0e0e0;
     --text-muted-color: #aaa;
     --primary-color: #36A2EB; /* Blue accent */
-    --highlight-color: #6a6a3a;
+    --highlight-color: #083d50;
     --border-color: #444;
     --border-light-color: #555;
     --table-header-bg: #333;
@@ -108,7 +108,7 @@ main#leaderboard-area {
     padding: var(--spacing-lg);
     border-radius: var(--border-radius);
     margin-bottom: var(--spacing-xl);
-    overflow: hidden;
+    overflow: visible !important;
     transition: all var(--transition-normal);
 }
   
@@ -148,11 +148,9 @@ main#leaderboard-area {
 }
   
 .controls-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px 30px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-light-color);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
 }
   
 #controls-area.collapsed .controls-grid {
@@ -170,7 +168,7 @@ main#leaderboard-area {
     margin-bottom: 10px;
     color: var(--text-color);
 }
-  
+
 /* Radio button styling */
 .control-group div.radio-group {
     display: flex;
@@ -256,14 +254,17 @@ main#leaderboard-area {
 
 #leaderboard-table th {
     background-color: var(--table-header-bg);
-    color: var(--text-color);
+    color: var(--text-muted-color);
     font-weight: 600;
     position: sticky;
     top: 0;
     z-index: var(--z-index-sticky);
+    text-align: center;
+    font-size: 0.95em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
-#leaderboard-table th:nth-child(2),
 #leaderboard-table td:nth-child(2) {
     text-align: left;
 }
@@ -573,4 +574,317 @@ input[type="number"] {
     height: 24px;
     vertical-align: middle;
     margin-right: 6px;
+}
+
+.custom-clan-dropdown {
+    position: relative;
+    width: 140px;
+    min-width: 0;
+    max-width: 160px;
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+.custom-clan-selected {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    background: var(--surface-alt-color);
+    border: 1px solid var(--border-light-color);
+    border-radius: var(--border-radius);
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.custom-clan-selected .clan-icon {
+    margin-right: 8px;
+}
+
+.custom-clan-selected .dropdown-arrow {
+    margin-left: auto;
+    font-size: 1.1em;
+}
+
+.clan-dropdown-list {
+    display: none;
+    position: absolute;
+    left: 0;
+    /* width will be set dynamically in JS to match parent */
+    background: var(--surface-color);
+    border: 1px solid var(--border-light-color);
+    border-radius: var(--border-radius);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    z-index: 9999;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: var(--box-shadow);
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) var(--surface-color);
+}
+
+.clan-dropdown-list.show {
+    display: block;
+}
+
+.clan-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: background 0.2s;
+}
+
+.clan-dropdown-item:hover {
+    background: var(--table-hover-bg);
+}
+
+.dropdown-arrow {
+    margin-left: 8px;
+    font-size: 1.1em;
+}
+
+.custom-rank-dropdown {
+    position: relative;
+    width: 80px;
+    min-width: 0;
+    max-width: 100px;
+    margin-bottom: 10px;
+    font-size: 1em;
+    display: inline-block;
+}
+.custom-rank-selected {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    background: var(--surface-alt-color);
+    border: 1px solid var(--border-light-color);
+    border-radius: var(--border-radius);
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.rank-dropdown-list {
+    display: none;
+    position: absolute;
+    left: 0;
+    z-index: 9999;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--surface-color);
+    border: 1px solid var(--border-light-color);
+    border-radius: var(--border-radius);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-shadow: var(--box-shadow);
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) var(--surface-color);
+}
+.rank-dropdown-list.show {
+    display: block;
+}
+.rank-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-align: left;
+}
+.rank-dropdown-item:hover {
+    background: var(--table-hover-bg);
+}
+
+.custom-rank-selected .dropdown-arrow {
+    margin-left: auto;
+    font-size: 1.1em;
+}
+
+/* Themed scrollbars for custom dropdowns */
+.clan-dropdown-list,
+.rank-dropdown-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) var(--surface-color);
+}
+
+.clan-dropdown-list::-webkit-scrollbar,
+.rank-dropdown-list::-webkit-scrollbar {
+    width: 8px;
+    background: var(--surface-color);
+}
+
+.clan-dropdown-list::-webkit-scrollbar-thumb,
+.rank-dropdown-list::-webkit-scrollbar-thumb {
+    background: var(--primary-color);
+    border-radius: 8px;
+}
+
+.clan-dropdown-list::-webkit-scrollbar-thumb:hover,
+.rank-dropdown-list::-webkit-scrollbar-thumb:hover {
+    background: #2586c7;
+}
+
+/* Responsive: stack everything vertically on small screens */
+@media (max-width: 900px) {
+    .controls-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-lg);
+    }
+}
+
+.control-group.gain-period,
+.control-group.catch-period {
+    flex: 1 1 auto; /* Let radio card grow to fit radio buttons */
+    margin: 0;
+    background: var(--surface-alt-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    padding: 18px 20px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    box-sizing: border-box;
+}
+
+.control-group.gain-period > label:first-child,
+.control-group.catch-period > label:first-child {
+    font-size: 0.95em;
+    color: var(--text-muted-color);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.control-group .radio-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    justify-content: flex-start;
+    width: 100%;
+}
+
+.controls-grid .dropdown-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    margin-top: 18px;
+    justify-content: center;
+    width: 100%;
+}
+
+.controls-grid .dropdown-row > * {
+    min-width: 140px;
+    max-width: 220px;
+    flex: 1 1 0;
+}
+
+@media (max-width: 700px) {
+    .control-group.gain-period,
+    .control-group.catch-period {
+        min-width: 0;
+        width: 100%;
+        align-items: stretch;
+    }
+    .control-group .radio-group {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+    .controls-grid .dropdown-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .controls-grid .dropdown-row > * {
+        max-width: 100%;
+    }
+}
+
+.controls-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch; /* Make both cards the same height */
+    gap: 24px;
+    width: 100%;
+}
+
+.tracked-clan-dropdown,
+.target-rank-dropdown {
+    flex: 0 0 220px;
+    width: 220px;
+    background: var(--surface-alt-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    padding: 18px 20px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    box-sizing: border-box;
+}
+
+.tracked-clan-dropdown > label,
+.target-rank-dropdown > label {
+    font-size: 0.95em;
+    color: var(--text-muted-color);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.tracked-clan-dropdown select,
+.target-rank-dropdown input[type="number"],
+.custom-clan-dropdown,
+.custom-rank-dropdown {
+    width: 140px;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+    .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .control-group.gain-period,
+    .control-group.catch-period {
+        width: 100%;
+        max-width: 100%;
+    }
+    .tracked-clan-dropdown,
+    .target-rank-dropdown {
+        width: 100%;
+        max-width: 100%;
+    }
+    .custom-clan-dropdown,
+    .custom-rank-dropdown {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+.control-group .radio-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap; /* Prevent wrapping */
+    gap: 8px;
+    justify-content: flex-start;
+    width: 100%;
 }

@@ -34,7 +34,7 @@ let comparisonChart = null; // Variable to hold the chart instance
 let selectedComparisonClans = []; // Array to hold selected clan names
 let currentComparisonTimePeriod = 60; // Default comparison period
 let controlsExpanded = true; // Initial state of controls
-
+let clanList = []; // Global clan list for dropdown and other uses
 
 // --- API Base URL ---
 const API_BASE_URL = "https://clan-dashboard-api.onrender.com"; // Your Render URL
@@ -212,7 +212,7 @@ async function fetchDashboardData() {
         } catch (jsonError) { /* Ignore if response wasn't JSON */ }
         throw new Error(errorDetail);
       }
-      const clanList = await response.json();
+      clanList = await response.json();
       console.log("Dashboard data received (first few):", clanList.slice(0, 3));
   
       leaderboardBody.innerHTML = ''; // Clear loading/previous rows
@@ -229,23 +229,32 @@ async function fetchDashboardData() {
           }
           targetClanSelect.appendChild(option);
         });
-        if (!previousSelectedClan) {
-          // Only set default on initial load
-          const nongOption = Array.from(targetClanSelect.options).find(opt => opt.value === "NONG");
-          if (nongOption) {
-            targetClanSelect.value = "NONG";
-            currentTargetClan = "NONG";
-            console.log("Defaulted tracked clan to NONG");
-            fetchReachTargetData(); // Ensure display updates on initial load
-          } else if (targetClanSelect.value) {
-            currentTargetClan = targetClanSelect.value;
-            console.log(`Target clan implicitly set to: ${currentTargetClan}`);
-            fetchReachTargetData(); // Ensure display updates on initial load
-          }
+        const savedClan = localStorage.getItem('selectedClan');
+        let validSavedClan = savedClan && Array.from(targetClanSelect.options).some(opt => opt.value === savedClan);
+
+        if (validSavedClan) {
+            targetClanSelect.value = savedClan;
+            currentTargetClan = savedClan;
+            fetchReachTargetData();
+        } else if (!previousSelectedClan) {
+            // Only set default on very first load
+            const nongOption = Array.from(targetClanSelect.options).find(opt => opt.value === "NONG");
+            if (nongOption) {
+                targetClanSelect.value = "NONG";
+                currentTargetClan = "NONG";
+                localStorage.setItem('selectedClan', "NONG");
+                fetchReachTargetData();
+            } else if (targetClanSelect.options.length > 1) {
+                // Use the first available clan (not the placeholder)
+                targetClanSelect.selectedIndex = 1;
+                currentTargetClan = targetClanSelect.value;
+                localStorage.setItem('selectedClan', currentTargetClan);
+                fetchReachTargetData();
+            }
         } else {
-          // Restore previous selection
-          targetClanSelect.value = previousSelectedClan;
-          currentTargetClan = previousSelectedClan;
+            // Restore previous selection
+            targetClanSelect.value = previousSelectedClan;
+            currentTargetClan = previousSelectedClan;
         }
         // --- End Dropdown Population ---
   
@@ -269,6 +278,12 @@ async function fetchDashboardData() {
         // --- End Populate All Clan Pills ---
   
         // --- Populate table rows (Existing logic) ---
+        let trackedClanGain = null;
+        if (clanList && Array.isArray(clanList)) {
+            const trackedClan = clanList.find(clan => clan.clan_name === currentTargetClan);
+            if (trackedClan) trackedClanGain = trackedClan.x_minute_gain;
+        }
+  
         clanList.forEach(clan => {
           const row = document.createElement('tr');
           if (clan.clan_name === currentTargetClan) { // Add highlighting
@@ -278,6 +293,21 @@ async function fetchDashboardData() {
           const imageId = getImageId(clan.icon);
           const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
 
+          const ttcStr = formatTimeOrNA(clan.time_to_catch);
+          const ttcMins = parseTimeToMinutes(ttcStr);
+          const warEnded = /ended|n\/a|error/i.test(countdownTimerElement.textContent);
+          let ttcColor = '';
+          if (ttcMins !== null) {
+              if (warEnded) {
+                  ttcColor = 'red';
+              } else {
+                  const warMins = parseTimeToMinutes(countdownTimerElement.textContent);
+                  if (warMins !== null) {
+                      ttcColor = ttcMins <= warMins ? 'green' : 'red';
+                  }
+              }
+          }
+
           row.innerHTML = `
               <td>${formatRank(clan.current_rank)}</td>
               <td>
@@ -285,9 +315,13 @@ async function fetchDashboardData() {
                   ${clan.clan_name || '-'}
               </td>
               <td>${formatNumber(clan.current_points)}</td>
-              <td>${formatGain(clan.x_minute_gain)}</td>
+              <td>${
+                  (clan.clan_name !== currentTargetClan && trackedClanGain !== null && clan.x_minute_gain > trackedClanGain)
+                      ? `<span style='color: red'>${formatGain(clan.x_minute_gain)}</span>`
+                      : formatGain(clan.x_minute_gain)
+              }</td>
               <td>${formatNumber(clan.gap)}</td>
-              <td>${formatTimeOrNA(clan.time_to_catch)}</td>
+              <td>${ttcColor && ttcStr !== '-' ? `<span style='color: ${ttcColor}'>${ttcStr}</span>` : ttcStr}</td>
               <td>${formatRank(clan.forecast)}</td>
             `;
           leaderboardBody.appendChild(row);
@@ -309,6 +343,156 @@ async function fetchDashboardData() {
       if (comparisonClanListDiv) comparisonClanListDiv.innerHTML = '(Error loading clans)'; // Update placeholder on error
       lastUpdatedElement.textContent = new Date().toLocaleTimeString();
     }
+
+    // 1. Hide the old select and add a new div for the custom dropdown
+    console.log('Attempting to hide old select and insert custom dropdown...');
+    if (targetClanSelect) {
+        targetClanSelect.style.display = 'none';
+        console.log('targetClanSelect found and hidden.');
+    } else {
+        console.warn('targetClanSelect not found!');
+    }
+    let customDropdown = document.getElementById('custom-clan-dropdown');
+    if (!customDropdown) {
+        customDropdown = document.createElement('div');
+        customDropdown.id = 'custom-clan-dropdown';
+        customDropdown.className = 'custom-clan-dropdown';
+        if (targetClanSelect && targetClanSelect.parentNode) {
+            targetClanSelect.parentNode.insertBefore(customDropdown, targetClanSelect);
+            console.log('Inserted custom dropdown into DOM.');
+        } else {
+            console.warn('Could not insert custom dropdown: targetClanSelect or its parentNode is missing.');
+        }
+    } else {
+        console.log('Custom dropdown already exists in DOM.');
+    }
+
+    // Helper to render the custom dropdown
+    console.log('Calling renderCustomClanDropdown with clanList:', clanList);
+    renderCustomClanDropdown(clanList);
+
+    // Hide the old number input and add a new div for the custom rank dropdown
+    if (targetRankInput) targetRankInput.style.display = 'none';
+    let customRankDropdown = document.getElementById('custom-rank-dropdown');
+    if (!customRankDropdown) {
+        customRankDropdown = document.createElement('div');
+        customRankDropdown.id = 'custom-rank-dropdown';
+        customRankDropdown.className = 'custom-rank-dropdown';
+        targetRankInput.parentNode.insertBefore(customRankDropdown, targetRankInput);
+    }
+
+    function renderCustomRankDropdown(selectedRank = 1) {
+        const dropdown = document.getElementById('custom-rank-dropdown');
+        dropdown.innerHTML = '';
+        const selected = document.createElement('div');
+        selected.className = 'custom-rank-selected';
+        selected.innerHTML = `
+            <span>${selectedRank}</span>
+            <span class="dropdown-arrow">&#9662;</span>
+        `;
+        dropdown.appendChild(selected);
+
+        const list = document.createElement('ul');
+        list.className = 'rank-dropdown-list';
+        for (let i = 1; i <= 20; i++) {
+            const item = document.createElement('li');
+            item.className = 'rank-dropdown-item';
+            item.textContent = i;
+            item.onclick = () => {
+                currentTargetRank = i;
+                renderCustomRankDropdown(i);
+                fetchReachTargetData();
+            };
+            list.appendChild(item);
+        }
+        dropdown.appendChild(list);
+
+        // Force dropdown list width to match the selected box
+        setTimeout(() => {
+            const selectedBox = dropdown.querySelector('.custom-rank-selected');
+            if (selectedBox) {
+                const selectedWidth = selectedBox.offsetWidth;
+                list.style.width = selectedWidth + 'px';
+                list.style.minWidth = selectedWidth + 'px';
+                list.style.maxWidth = selectedWidth + 'px';
+                list.style.boxSizing = 'border-box';
+            }
+        }, 0);
+
+        // Toggle dropdown
+        selected.onclick = (e) => {
+            e.stopPropagation();
+            list.classList.toggle('show');
+        };
+        document.addEventListener('click', () => list.classList.remove('show'));
+    }
+
+    // In fetchDashboardData or initializeApp, after rendering the controls, call:
+    renderCustomRankDropdown(currentTargetRank);
+}
+
+// Helper to render the custom dropdown
+function renderCustomClanDropdown(clanList) {
+    console.log('Rendering custom clan dropdown. clanList:', clanList);
+    const dropdown = document.getElementById('custom-clan-dropdown');
+    if (!dropdown) {
+        console.error('custom-clan-dropdown div not found!');
+        return;
+    }
+    dropdown.innerHTML = '';
+    const selected = document.createElement('div');
+    selected.className = 'custom-clan-selected';
+    let selectedClan = clanList.find(c => c.clan_name === currentTargetClan) || clanList[0];
+    const imageId = getImageId(selectedClan.icon);
+    const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+    selected.innerHTML = `
+        ${imageUrl ? `<img src="${imageUrl}" class="clan-icon">` : ''}
+        <span>${selectedClan.clan_name}</span>
+        <span class="dropdown-arrow">&#9662;</span>
+    `;
+    dropdown.appendChild(selected);
+
+    const list = document.createElement('ul');
+    list.className = 'clan-dropdown-list';
+    clanList.forEach(clan => {
+        const imageId = getImageId(clan.icon);
+        const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+        const item = document.createElement('li');
+        item.className = 'clan-dropdown-item';
+        item.innerHTML = `
+            ${imageUrl ? `<img src="${imageUrl}" class="clan-icon">` : ''}
+            <span>${clan.clan_name}</span>
+        `;
+        item.onclick = () => {
+            currentTargetClan = clan.clan_name;
+            localStorage.setItem('selectedClan', currentTargetClan); // Save to localStorage
+            renderCustomClanDropdown(clanList);
+            fetchReachTargetData();
+            fetchDashboardData();
+        };
+        list.appendChild(item);
+    });
+    dropdown.appendChild(list);
+
+    // Force dropdown list width to match the selected box (edge-to-edge)
+    setTimeout(() => {
+        const selectedBox = dropdown.querySelector('.custom-clan-selected');
+        if (selectedBox) {
+            const selectedWidth = selectedBox.offsetWidth;
+            list.style.width = selectedWidth + 'px';
+            list.style.minWidth = selectedWidth + 'px';
+            list.style.maxWidth = selectedWidth + 'px';
+            list.style.boxSizing = 'border-box';
+        }
+    }, 0);
+
+    // Toggle dropdown
+    selected.onclick = (e) => {
+        e.stopPropagation();
+        list.classList.toggle('show');
+        console.log('Dropdown toggled.');
+    };
+    document.addEventListener('click', () => list.classList.remove('show'));
 }
 
 // --- Fetch Comparison Data & Prepare Chart ---
@@ -580,9 +764,10 @@ function initializeApp() {
     fetchReachTargetData(); // Fetch initial reach target data
 }
 
-// Run initialization once the DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeApp);
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeApp();
+    });
 } else {
     initializeApp();
 }
@@ -592,4 +777,16 @@ function getImageId(iconString) {
     if (!iconString) return null;
     const match = iconString.match(/rbxassetid:\/\/(\d+)/);
     return match ? match[1] : null;
+}
+
+// Helper to parse time strings like '1h 30m' to minutes
+function parseTimeToMinutes(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return null;
+    if (/ended|n\/a|error/i.test(timeStr)) return null;
+    let total = 0;
+    const hMatch = timeStr.match(/(\d+)h/);
+    const mMatch = timeStr.match(/(\d+)m/);
+    if (hMatch) total += parseInt(hMatch[1], 10) * 60;
+    if (mMatch) total += parseInt(mMatch[1], 10);
+    return total > 0 ? total : null;
 }

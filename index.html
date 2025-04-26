@@ -20,37 +20,44 @@
     <section id="controls-area">
       <h2>Controls</h2>
       <div class="controls-grid">
-        <div class="control-group">
-          <label>Select Gain Period:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="time_period" value="30" checked> 30m</label>
-            <label><input type="radio" name="time_period" value="60"> 1h</label>
-            <label><input type="radio" name="time_period" value="180"> 3h</label>
-            <label><input type="radio" name="time_period" value="360"> 6h</label>
-            <label><input type="radio" name="time_period" value="720"> 12h</label>
-            <label><input type="radio" name="time_period" value="1440"> 24h</label>
+        <div class="controls-row">
+          <div class="control-group gain-period">
+            <label>Show Points Gained in the Last:</label>
+            <div class="radio-group">
+              <label><input type="radio" name="time_period" value="30"> 30m</label>
+              <label><input type="radio" name="time_period" value="60"checked> 1h</label>
+              <label><input type="radio" name="time_period" value="180"> 3h</label>
+              <label><input type="radio" name="time_period" value="360"> 6h</label>
+              <label><input type="radio" name="time_period" value="720"> 12h</label>
+              <label><input type="radio" name="time_period" value="1080"> 18h</label>
+              <label><input type="radio" name="time_period" value="1440"> 24h</label>
+            </div>
+          </div>
+          <div class="tracked-clan-dropdown">
+            <label for="target-clan-select">Tracked Clan:</label>
+            <select id="target-clan-select" name="target_clan">
+              <option value="">-- Select Clan --</option>
+            </select>
           </div>
         </div>
-
-        <div class="control-group">
-          <label>Time to Catch Period:</label>
-          <div class="radio-group">
-            <label><input type="radio" name="forecast_period" value="60" checked> 1h</label>
-            <label><input type="radio" name="forecast_period" value="180"> 3h</label>
-            <label><input type="radio" name="forecast_period" value="360"> 6h</label>
-            <label><input type="radio" name="forecast_period" value="720"> 12h</label>
-            <label><input type="radio" name="forecast_period" value="1080"> 18h</label>
-            <label><input type="radio" name="forecast_period" value="1440"> 24h</label>
+        <div class="controls-row">
+          <div class="control-group catch-period">
+            <label>Forecast "Time to Catch" Using Gains from the last:</label>
+            <div class="radio-group">
+              <label><input type="radio" name="forecast_period" value="30"> 30m</label>
+              <label><input type="radio" name="forecast_period" value="60" checked> 1h</label>
+              <label><input type="radio" name="forecast_period" value="180"> 3h</label>
+              <label><input type="radio" name="forecast_period" value="360"> 6h</label>
+              <label><input type="radio" name="forecast_period" value="720"> 12h</label>
+              <label><input type="radio" name="forecast_period" value="1080"> 18h</label>
+              <label><input type="radio" name="forecast_period" value="1440"> 24h</label>
+            </div>
+          </div>
+          <div class="target-rank-dropdown">
+            <label for="target-rank-input">Target Rank:</label>
+            <input type="number" id="target-rank-input" name="target_rank" value="1" min="1" max="250">
           </div>
         </div>
-
-        <div class="control-group inline-inputs">
-          <label for="target-clan-select">Tracked Clan:</label>
-          <select id="target-clan-select" name="target_clan">
-            <option value="">-- Select Clan --</option>
-          </select>
-          <label for="target-rank-input">Target Rank:</label>
-          <input type="number" id="target-rank-input" name="target_rank" value="1" min="1" max="250"> </div>
       </div> </section>
 
     <section id="reach-target-display">
