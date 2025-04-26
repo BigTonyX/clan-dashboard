@@ -326,19 +326,6 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
             else: raise HTTPException(status_code=503, detail="Could not get valid war end time")
         except Exception as cd_err: raise HTTPException(status_code=503, detail=f"Could not get war end time: {cd_err}")
 
-        if minutes_remaining <= 0:
-            # War is over: determine final rank of the clan
-            # Sort all clans by current_points descending
-            sorted_clans = sorted(ranked_latest_map.values(), key=lambda x: x['current_points'], reverse=True)
-            final_rank = None
-            for idx, clan in enumerate(sorted_clans, 1):
-                if clan['clan_name'] == clan_name:
-                    final_rank = idx
-                    break
-            return {"extra_points_per_hour": None, "final_rank": final_rank}
-
-        hours_remaining = minutes_remaining / 60.0
-
         # --- Connect to MongoDB ---
         client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000); db = client[DB_NAME]; clans_collection = db["clans"]; client.admin.command('ping'); print("MongoDB connection successful.")
 
@@ -351,6 +338,19 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
         ranked_latest_map = {doc['clan_name']: doc for doc in latest_docs_cursor} # Store as map keyed by name
         if not ranked_latest_map: raise HTTPException(status_code=503, detail="No current clan data available.")
         top_clan_names = list(ranked_latest_map.keys()) # Get names
+
+        # --- War over check moved here ---
+        if minutes_remaining <= 0:
+            # War is over: determine final rank of the clan
+            sorted_clans = sorted(ranked_latest_map.values(), key=lambda x: x['current_points'], reverse=True)
+            final_rank = None
+            for idx, clan in enumerate(sorted_clans, 1):
+                if clan['clan_name'] == clan_name:
+                    final_rank = idx
+                    break
+            return {"extra_points_per_hour": None, "final_rank": final_rank}
+
+        hours_remaining = minutes_remaining / 60.0
 
         user_clan_current_info = ranked_latest_map.get(clan_name)
         if not user_clan_current_info: raise HTTPException(status_code=404, detail=f"Clan '{clan_name}' not found.")
