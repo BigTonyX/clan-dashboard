@@ -32,7 +32,7 @@
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
-    font-family: var(--font-family);
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
     margin: 0;
     padding: 20px;
     line-height: 1.6;
@@ -49,25 +49,49 @@ body {
 h1, h2 {
     color: #ffffff;
     padding-bottom: 8px;
-    margin-top: 25px;
-    margin-bottom: 20px;
+    margin-top: 10px;
+    margin-bottom: 10px;
     border-bottom: 1px solid var(--border-light-color);
     text-align: left; /* Default to left align */
 }
 h1 { /* Main Title */
     text-align: center;
     margin-top: 0;
-    margin-bottom: 25px;
+    margin-bottom: 0;
     border-bottom: none;
-    font-size: 2em;
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 2.2em;
+    padding: 0;
+}
+
+.subheader {
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
+    font-size: 1.05em;
+    color: var(--text-muted-color);
+    margin-top: 2px;
+    margin-bottom: 2px;
+    letter-spacing: 0.01em;
+    text-align: center;
+}
+
+.subheader + * {
+    margin-top: 0 !important;
+}
+
+h1 + .subheader + h2 {
+    margin-top: 2px;
 }
 
 /* Header/Status Bar */
 header#status-bar {
     background-color: var(--surface-color);
-    padding: 12px 20px;
+    padding: 8px 20px;
     border-radius: var(--border-radius);
-    margin-bottom: 25px; /* Increased margin */
+    margin-top: 0;
+    margin-bottom: 15px; /* Increased margin */
     text-align: center;
     font-size: 1em;
     /* Removed max-width and centering - let it fill container or align left */
@@ -120,7 +144,7 @@ main#leaderboard-area {
 }
   
 #controls-area > h2 {
-    margin-top: 0;
+    margin-top: 8px;
     padding-bottom: 10px;
     cursor: pointer;
     display: flex;
@@ -128,6 +152,10 @@ main#leaderboard-area {
     align-items: center;
     border-bottom: none;
     transition: all 0.3s ease-in-out;
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }
   
 #controls-area.collapsed > h2 {
@@ -182,7 +210,7 @@ main#leaderboard-area {
     font-weight: normal;
     cursor: pointer;
     background-color: var(--bg-color);
-    padding: 8px 12px;
+    padding: 4px 10px;
     border-radius: 20px;
     border: 1px solid var(--border-color);
     width: 64px;
@@ -384,7 +412,7 @@ input[type="number"] {
     font-weight: normal;
     cursor: pointer;
     background-color: var(--bg-color);
-    padding: 8px 12px;
+    padding: 4px 10px;
     border-radius: 20px;
     border: 1px solid var(--border-color);
     width: 64px;
@@ -887,4 +915,44 @@ input[type="number"] {
     gap: 8px;
     justify-content: flex-start;
     width: 100%;
+}
+
+#site-logo {
+    position: absolute;
+    top: 24px;
+    right: 32px;
+    z-index: 2000;
+    display: block;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transition: box-shadow 0.2s;
+}
+#site-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+}
+#site-logo:hover {
+    box-shadow: 0 4px 16px rgba(54,162,235,0.25);
+}
+@media (max-width: 600px) {
+    #site-logo {
+        top: 10px;
+        right: 10px;
+        width: 36px;
+        height: 36px;
+    }
+}
+
+#leaderboard-area > h2,
+#comparison-area > h2 {
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }
