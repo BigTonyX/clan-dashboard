@@ -9,8 +9,24 @@
     --highlight-color: #6a6a3a;
     --border-color: #444;
     --border-light-color: #555;
+    --table-header-bg: #333;
+    --table-hover-bg: #404040;
     --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     --border-radius: 5px;
+    --spacing-sm: 5px;
+    --spacing-md: 10px;
+    --spacing-lg: 20px;
+    --spacing-xl: 25px;
+    --font-size-sm: 0.9em;
+    --font-size-md: 1em;
+    --font-size-lg: 1.1em;
+    --font-size-xl: 2em;
+    --box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease-in-out;
+    --z-index-dropdown: 1000;
+    --z-index-sticky: 100;
+    --z-index-normal: 1;
 }
 
 body {
@@ -89,122 +105,124 @@ main#leaderboard-area {
 /* Controls Area - Heading outside flex/grid */
 #controls-area {
     background-color: var(--surface-color);
-    padding: 20px; /* Keep padding when expanded */
+    padding: var(--spacing-lg);
     border-radius: var(--border-radius);
-    margin-bottom: 25px;
-    margin-left: 0;
-    margin-right: 0;
-    overflow: hidden; /* Ensure content is fully hidden when collapsed */
-    transition: padding 0.3s ease-in-out; /* Smooth transition for padding */
-  }
+    margin-bottom: var(--spacing-xl);
+    overflow: hidden;
+    transition: all var(--transition-normal);
+}
   
-  #controls-area.collapsed {
-    padding-top: 10px; /* Reduce top padding when collapsed - adjusted further */
-    padding-bottom: 10px; /* Reduce bottom padding when collapsed - adjusted further */
-  }
+#controls-area.collapsed {
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+}
   
-  #controls-area > h2 { /* Target the h2 *inside* #controls-area */
+#controls-area > h2 {
     margin-top: 0;
-    padding-bottom: 10px; /* Keep some padding for spacing when expanded */
+    padding-bottom: 10px;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: none;
-    transition: padding-bottom 0.3s ease-in-out; /* Smooth transition for h2 padding */
-  }
+    transition: all 0.3s ease-in-out;
+}
   
-  #controls-area.collapsed > h2 {
-    padding-bottom: 5px; /* Reduce padding below "Controls" when collapsed - CORRECTED VALUE */
-  }
+#controls-area.collapsed > h2 {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
   
-  #controls-area > h2::after {
+#controls-area > h2::after {
     content: '\25BE';
     font-size: 1.2em;
     transition: transform 0.3s ease-in-out;
-  }
+}
   
-  #controls-area.collapsed > h2::after {
+#controls-area.collapsed > h2::after {
     transform: rotate(-90deg);
-  }
+}
   
-  .controls-grid {
+.controls-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 20px 30px;
     padding-top: 20px;
     border-top: 1px solid var(--border-light-color);
-  }
+}
   
-  #controls-area.collapsed .controls-grid {
+#controls-area.collapsed .controls-grid {
     display: none;
-  }
+}
   
-  .controls-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px 30px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-light-color);
-  }
-  
-  #controls-area.collapsed .controls-grid {
-    display: none;
-  }
-  
-  .control-group {
+.control-group {
     padding: 0;
     border: none;
-  }
+}
   
-  .control-group > label:first-child { /* Main label for group */
+.control-group > label:first-child {
     display: block;
     font-weight: bold;
-    margin-bottom: 10px; /* More space */
-    color: #fff;
-  }
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
   
-  /* Radio button styling (no changes needed here) */
-  .control-group div.radio-group {
+/* Radio button styling */
+.control-group div.radio-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 15px; /* Spacing for radios */
-  }
+    gap: 8px 15px;
+}
   
-  .control-group label:has(input[type="radio"]) {
+.control-group label:has(input[type="radio"]) {
     display: inline-flex;
     align-items: center;
-    margin-right: 0;
     font-weight: normal;
     cursor: pointer;
-    background-color: var(--bg-color); /* Give radios slight background */
-    padding: 5px 10px;
-    border-radius: 4px;
+    background-color: var(--bg-color);
+    padding: 8px 12px;
+    border-radius: 20px;
     border: 1px solid var(--border-color);
-    width: 80px; /* Adjust this value as needed */
-    /* Remove justify-content: center; */
-  }
+    width: 64px;
+    transition: all var(--transition-fast);
+}
   
-  .control-group input[type="radio"] {
+.control-group input[type="radio"] {
     margin-right: 6px;
-    accent-color: var(--primary-color); /* Style the check part */
-  }
+    accent-color: var(--primary-color);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    transition: all var(--transition-fast);
+}
+
+.control-group label:has(input[type="radio"]:checked) {
+    background-color: var(--surface-alt-color);
+    border-color: var(--primary-color);
+}
+
+.control-group label:has(input[type="radio"]:hover) {
+    border-color: var(--primary-color);
+}
   
-  /* Tracked Clan / Target Rank group styling (no changes needed here) */
-  .control-group.inline-inputs {
+/* Tracked Clan / Target Rank group styling */
+.control-group.inline-inputs {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 5px 10px;
-  }
+}
   
-  .control-group.inline-inputs label {
+.control-group.inline-inputs label {
     margin-bottom: 0;
-    display: inline; /* Keep labels inline */
-    font-weight: bold; /* Make these labels bold too */
-    color: #fff;
-  }
-
+    font-weight: bold;
+    color: var(--text-color);
+}
 
 /* Reach Target Display Box */
 #reach-target-display {
@@ -221,58 +239,99 @@ main#leaderboard-area {
 
 /* Leaderboard Table Styling */
 #leaderboard-table {
-    max-width: 1200px;   /* Match controls */
-    width: 100%;        /* Use available width up to max-width */
+    max-width: 1200px;
+    width: 100%;
     border-collapse: collapse;
-    /* margin-top: 10px; (Let H2 handle top margin) */
-    font-size: 0.95em;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    font-size: var(--font-size-sm);
+    box-shadow: var(--box-shadow);
 }
+
 #leaderboard-table th,
 #leaderboard-table td {
     border: 1px solid var(--border-color);
-    padding: 10px 15px;
+    padding: var(--spacing-md) var(--spacing-lg);
     text-align: center;
     white-space: nowrap;
 }
+
 #leaderboard-table th {
-    background-color: #333;
-    color: #fff;
+    background-color: var(--table-header-bg);
+    color: var(--text-color);
     font-weight: 600;
-    position: sticky; /* Make header sticky if table scrolls */
+    position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: var(--z-index-sticky);
 }
-#leaderboard-table tbody tr:nth-child(even) { background-color: var(--surface-color); }
-#leaderboard-table tbody tr:hover { background-color: #404040; }
+
+#leaderboard-table th:nth-child(2),
+#leaderboard-table td:nth-child(2) {
+    text-align: left;
+}
+
+#leaderboard-table tbody tr:nth-child(even) { 
+    background-color: var(--surface-color); 
+}
+
+#leaderboard-table tbody tr:hover { 
+    background-color: var(--table-hover-bg); 
+}
 
 /* Highlight Style */
-.highlight { background-color: var(--highlight-color) !important; font-weight: bold; color: #fff !important; }
+.highlight { 
+    background-color: var(--highlight-color) !important; 
+    font-weight: bold; 
+    color: var(--text-color) !important; 
+}
 
 /* --- Modern Form Element Styling --- */
-select, input[type="number"], button, input[type="text"] { /* Added text */
-    background-color: #333;
+select, input[type="number"], button, input[type="text"] {
+    background-color: var(--surface-alt-color);
     color: var(--text-color);
     border: 1px solid var(--border-light-color);
-    border-radius: 4px;
-    padding: 8px 12px; /* Consistent padding */
-    font-size: 1em;
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md) var(--spacing-lg);
+    font-size: var(--font-size-md);
     font-family: inherit;
-    margin: 0; /* Reset margins */
-    box-sizing: border-box; /* Include padding/border in width */
-}
-select {
+    margin: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23e0e0e0' height='24' viewBox='0 0 24 24' width='24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3Cpath d='M0 0h24v24H0z' fill='none'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    background-size: 1.2em;
-    padding-right: 35px; /* More space for arrow */
-    cursor: pointer;
+    transition: border-color var(--transition-fast);
 }
-button { cursor: pointer; background-color: var(--primary-color); color: #fff; font-weight: bold; border: none; transition: background-color 0.2s ease; }
-button:hover { filter: brightness(1.15); }
-input[type="number"] { width: 80px; } /* Adjust width */
+
+select:focus,
+input[type="number"]:focus,
+input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(54, 162, 235, 0.2);
+}
+
+button {
+    cursor: pointer;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    font-weight: bold;
+    border: none;
+    transition: all var(--transition-fast);
+    -webkit-transition: all var(--transition-fast);
+    -moz-transition: all var(--transition-fast);
+}
+
+button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(54, 162, 235, 0.4);
+}
+
+button:hover {
+    filter: brightness(1.15);
+    -webkit-filter: brightness(1.15);
+}
+
+input[type="number"] {
+    width: 80px;
+}
 
 /* Comparison Section Styling */
 #comparison-controls {
@@ -324,24 +383,39 @@ input[type="number"] { width: 80px; } /* Adjust width */
     font-weight: normal;
     cursor: pointer;
     background-color: var(--bg-color);
-    padding: 5px 10px;
-    border-radius: 4px;
+    padding: 8px 12px;
+    border-radius: 20px;
     border: 1px solid var(--border-color);
-    margin-bottom: 5px; /* Add some vertical spacing */
+    width: 64px;
+    transition: all var(--transition-fast);
 }
   
 #comparison-controls .control-group .radio-group.horizontal-radio-group input[type="radio"] {
     margin-right: 6px;
     accent-color: var(--primary-color);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    transition: all var(--transition-fast);
+}
+
+#comparison-controls .control-group .radio-group.horizontal-radio-group label:has(input[type="radio"]:checked) {
+    background-color: var(--surface-alt-color);
+    border-color: var(--primary-color);
+}
+
+#comparison-controls .control-group .radio-group.horizontal-radio-group label:has(input[type="radio"]:hover) {
+    border-color: var(--primary-color);
 }
   
 #comparison-chart-container {
     background-color: var(--surface-color);
-    padding: 20px;
+    padding: var(--spacing-lg);
     border-radius: var(--border-radius);
     height: 450px;
-    margin: 25px 0; /* Align left */
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Add shadow */
+    margin: var(--spacing-xl) 0;
+    box-shadow: var(--box-shadow);
 }
   
 #comparison-selection-area {
@@ -372,6 +446,12 @@ input[type="number"] { width: 80px; } /* Adjust width */
     width: auto; /* Adjust width to content */
     margin-right: 8px; /* Add some spacing between selected pills */
     margin-bottom: 5px;
+    transition: all var(--transition-fast);
+}
+  
+.clan-pill:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(54, 162, 235, 0.4);
 }
   
 .remove-pill {
@@ -408,9 +488,89 @@ input[type="number"] { width: 80px; } /* Adjust width */
     align-items: center;
     margin-right: 8px;
     margin-bottom: 5px;
+    transition: all var(--transition-fast);
 }
   
+.clan-option-pill:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(54, 162, 235, 0.4);
+}
+
 .clan-option-pill.selected {
     background-color: var(--primary-color);
     border-color: var(--primary-color);
+}
+
+/* --- Responsive Styles for Mobile --- */
+@media screen and (max-width: 600px) {
+    body {
+        padding: 0;
+    }
+    .page-container {
+        padding: 0 var(--spacing-lg);
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+  
+    header#status-bar {
+      padding: var(--spacing-md) var(--spacing-lg);
+      font-size: var(--font-size-sm);
+    }
+  
+    #controls-area {
+      padding: var(--spacing-lg);
+    }
+  
+    .controls-grid {
+      grid-template-columns: 1fr;
+      gap: var(--spacing-lg);
+    }
+  
+    .control-group.inline-inputs {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  
+    .control-group.inline-inputs label {
+      display: block;
+      margin-bottom: var(--spacing-sm);
+    }
+  
+    #comparison-controls {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-lg);
+        width: 100%;
+        box-sizing: border-box;
+    }
+  
+    #comparison-controls button {
+      grid-column: 1;
+      justify-self: stretch;
+    }
+  
+    #all-clan-pills,
+    #selected-clan-pills {
+      justify-content: flex-start;
+    }
+  
+    .clan-option-pill,
+    .clan-pill {
+      width: auto;
+      margin-right: var(--spacing-sm);
+      margin-bottom: var(--spacing-sm);
+    }
+  
+    .clan-option-pill {
+      flex-grow: 1;
+    }
+  }
+
+.clan-icon {
+    border-radius: 50%;
+    object-fit: cover;
+    width: 24px;
+    height: 24px;
+    vertical-align: middle;
+    margin-right: 6px;
 }

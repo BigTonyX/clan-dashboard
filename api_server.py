@@ -326,7 +326,17 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
             else: raise HTTPException(status_code=503, detail="Could not get valid war end time")
         except Exception as cd_err: raise HTTPException(status_code=503, detail=f"Could not get war end time: {cd_err}")
 
-        if minutes_remaining <= 0: return {"extra_points_per_hour": 0} # Return 0 if war ended
+        if minutes_remaining <= 0:
+            # War is over: determine final rank of the clan
+            # Sort all clans by current_points descending
+            sorted_clans = sorted(ranked_latest_map.values(), key=lambda x: x['current_points'], reverse=True)
+            final_rank = None
+            for idx, clan in enumerate(sorted_clans, 1):
+                if clan['clan_name'] == clan_name:
+                    final_rank = idx
+                    break
+            return {"extra_points_per_hour": None, "final_rank": final_rank}
+
         hours_remaining = minutes_remaining / 60.0
 
         # --- Connect to MongoDB ---

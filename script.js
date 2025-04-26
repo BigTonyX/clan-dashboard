@@ -154,7 +154,7 @@ function formatTimePeriodHeader(minutes) {
 // --- Fetch and Display "Reach Target" Data ---
 async function fetchReachTargetData() {
     if (!currentTargetClan) {
-        reachTargetDisplay.innerHTML = '<p>Select a clan to track.</p>';
+        reachTargetDisplay.innerHTML = '<p>Select a Clan to Track in Controls</p>';
         return;
     }
     console.log(`Fetching reach target data for ${currentTargetClan} to rank ${currentTargetRank} (forecast period ${currentForecastPeriod}m)...`);
@@ -174,7 +174,14 @@ async function fetchReachTargetData() {
         let resultText = "Error";
         if (data && data.extra_points_per_hour !== undefined) {
              const points = data.extra_points_per_hour;
-             if (points === null) { resultText = `Ineligible (needs >6hrs data)`; }
+             if (points === null && data.final_rank !== undefined && data.final_rank !== null) {
+                 // War is over, show final rank
+                 let suffix = 'th';
+                 if (data.final_rank === 1) suffix = 'st';
+                 else if (data.final_rank === 2) suffix = 'nd';
+                 else if (data.final_rank === 3) suffix = 'rd';
+                 resultText = `War Over, Finished ${data.final_rank}${suffix}`;
+             } else if (points === null) { resultText = `Ineligible (needs >6hrs data)`; }
              else if (points === 0) { resultText = `Already projected >= rank ${currentTargetRank}!`; }
              else if (points === "Infinity") { resultText = `Needs infinite points/hr`; }
              else { resultText = `Needs **${formatNumber(points)}** extra pts/hr for rank ${currentTargetRank}`; }
@@ -222,10 +229,23 @@ async function fetchDashboardData() {
           }
           targetClanSelect.appendChild(option);
         });
-        // Ensure state reflects dropdown *after* population if it was empty and has a value now
-        if (!currentTargetClan && targetClanSelect.value) {
-          currentTargetClan = targetClanSelect.value;
-          console.log(`Target clan implicitly set to: ${currentTargetClan}`);
+        if (!previousSelectedClan) {
+          // Only set default on initial load
+          const nongOption = Array.from(targetClanSelect.options).find(opt => opt.value === "NONG");
+          if (nongOption) {
+            targetClanSelect.value = "NONG";
+            currentTargetClan = "NONG";
+            console.log("Defaulted tracked clan to NONG");
+            fetchReachTargetData(); // Ensure display updates on initial load
+          } else if (targetClanSelect.value) {
+            currentTargetClan = targetClanSelect.value;
+            console.log(`Target clan implicitly set to: ${currentTargetClan}`);
+            fetchReachTargetData(); // Ensure display updates on initial load
+          }
+        } else {
+          // Restore previous selection
+          targetClanSelect.value = previousSelectedClan;
+          currentTargetClan = previousSelectedClan;
         }
         // --- End Dropdown Population ---
   
@@ -254,10 +274,16 @@ async function fetchDashboardData() {
           if (clan.clan_name === currentTargetClan) { // Add highlighting
             row.classList.add('highlight');
           }
-          // Ensure this template literal is clean
+          // Get image ID and URL
+          const imageId = getImageId(clan.icon);
+          const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+
           row.innerHTML = `
               <td>${formatRank(clan.current_rank)}</td>
-              <td>${clan.clan_name || '-'}</td>
+              <td>
+                  ${imageUrl ? `<img src="${imageUrl}" alt="icon" class="clan-icon">` : ''}
+                  ${clan.clan_name || '-'}
+              </td>
               <td>${formatNumber(clan.current_points)}</td>
               <td>${formatGain(clan.x_minute_gain)}</td>
               <td>${formatNumber(clan.gap)}</td>
@@ -559,4 +585,11 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeApp);
 } else {
     initializeApp();
+}
+
+// Helper to extract image ID from icon string
+function getImageId(iconString) {
+    if (!iconString) return null;
+    const match = iconString.match(/rbxassetid:\/\/(\d+)/);
+    return match ? match[1] : null;
 }
