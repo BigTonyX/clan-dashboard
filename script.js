@@ -77,7 +77,7 @@ function handleClanPillClick(event) {
       // Clicked a pill in the selected-clan-pills area (top)
       selectedComparisonClans = selectedComparisonClans.filter(clan => clan !== clanName);
       renderClanPills(); // Re-render the selected pills
-      // Do NOT call renderAllClanPills here
+      renderAllClanPills(); // Re-render all pills to update their states
     } else if (clickedElement.classList.contains('clan-option-pill')) {
       // Clicked a clan pill in the main list
       const isSelected = selectedComparisonClans.includes(clanName);
@@ -85,7 +85,7 @@ function handleClanPillClick(event) {
         if (selectedComparisonClans.length < 3) {
           selectedComparisonClans.push(clanName);
           renderClanPills(); // Re-render the selected pills
-          // Do NOT call renderAllClanPills here
+          renderAllClanPills(); // Re-render all pills to update their states
         } else {
           alert("You can only select up to 3 clans for comparison.");
         }
