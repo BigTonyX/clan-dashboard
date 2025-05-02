@@ -13,14 +13,23 @@ import urllib3
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from logging.handlers import RotatingFileHandler
 
-# Configure logging
+# Configure logging with rotation
+log_file = 'member_fetcher.log'
+max_bytes = 10 * 1024 * 1024  # 10MB
+backup_count = 5  # Keep 5 backup files
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('member_fetcher.log')
+        RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count
+        )
     ]
 )
 logger = logging.getLogger(__name__)
@@ -353,28 +362,42 @@ def store_new_battle(mongo_client, battle_id, start_time):
     try:
         db = mongo_client[DB_NAME]
         battle_collection = db["battle_id_history"]
+        
+        # First, set all existing battles to is_current: false
+        battle_collection.update_many(
+            {},  # match all documents
+            {"$set": {"is_current": False}}
+        )
+        
+        # Then insert new battle with is_current: true
         battle_collection.insert_one({
             "battle_id": battle_id,
-            "timestamp": start_time
+            "timestamp": start_time,
+            "is_current": True
         })
-        logger.info(f"Recorded new battle: {battle_id}")
+        
+        logger.info(f"Recorded new battle: {battle_id} as current battle")
         return True
     except Exception as e:
         logger.error(f"Error storing new battle: {e}")
         return False
 
-def main():
+def main(mongo_client=None, is_running=None):
     """Main execution function for the member data fetcher."""
     logger.info("Starting member data fetcher...")
-    mongo_client = None
-
+    
+    # Use provided MongoDB connection or create new one
+    if not mongo_client:
+        try:
+            mongo_client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000)
+            mongo_client.admin.command('ping')
+            logger.info("MongoDB connection successful!")
+        except Exception as e:
+            logger.error(f"Failed to connect to MongoDB: {e}")
+            return
+    
     try:
-        # Initial MongoDB connection
-        mongo_client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000)
-        mongo_client.admin.command('ping')
-        logger.info("MongoDB connection successful!")
-        
-        while True:
+        while is_running is None or is_running():
             try:
                 # Get current war information
                 current_war_info = get_current_war_info()
@@ -429,12 +452,13 @@ def main():
                 time.sleep(120)
             
     except KeyboardInterrupt:
-        logger.info("\nReceived keyboard interrupt. Shutting down...")
+        logger.info("Received keyboard interrupt. Shutting down...")
     except Exception as e:
         logger.error(f"Fatal error in main program: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
     finally:
-        if mongo_client:
+        # Only close the connection if we created it
+        if mongo_client and not is_running:
             mongo_client.close()
             logger.info("MongoDB connection closed")
         logger.info("Member data fetcher stopped")
