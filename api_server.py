@@ -20,8 +20,6 @@ DB_NAME = "clan_dashboard_db" # Use the same database name as in the fetcher
 
 # Create the FastAPI app instance
 app = FastAPI(title="Clan Dashboard API", version="0.1.0")
-# Create the FastAPI app instance (This line should already exist)
-app = FastAPI(title="Clan Dashboard API", version="0.1.0")
 
 # --- CORS Middleware ---
 # Define allowed origins (domains) that can access your API
@@ -510,6 +508,37 @@ async def get_clan_comparison(
             print("MongoDB connection closed for /api/clan_comparison.")
 
     return comparison_data
+
+# New endpoint to fetch battle IDs
+@app.get("/api/battle_ids")
+async def get_battle_ids():
+    """Fetches all battle IDs from the battle_id_history collection, sorted by timestamp."""
+    try:
+        # Connect to MongoDB
+        client = MongoClient(MONGO_CONNECTION_STRING)
+        db = client[DB_NAME]
+        battle_id_collection = db["battle_id_history"]
+
+        # Fetch all battle IDs, sorted by timestamp in descending order
+        battle_ids = list(battle_id_collection.find(
+            {},
+            {"_id": 0, "battle_id": 1, "timestamp": 1}
+        ).sort("timestamp", pymongo.DESCENDING))
+
+        # Convert timestamps to ISO format strings
+        for record in battle_ids:
+            if "timestamp" in record and isinstance(record["timestamp"], datetime.datetime):
+                record["timestamp"] = record["timestamp"].isoformat()
+
+        return battle_ids
+
+    except Exception as e:
+        print(f"Error fetching battle IDs: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching battle IDs: {str(e)}")
+    finally:
+        if client:
+            client.close()
+            print("MongoDB connection closed for /api/battle_ids")
 
 # --- This part allows running directly with 'python api_server.py' (optional but convenient) ---
 # Note: For development, running with 'uvicorn api_server:app --reload' is usually preferred.
