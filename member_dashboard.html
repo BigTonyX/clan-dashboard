@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clan Member Tracking Dashboard</title>
+    <link href="https://fonts.googleapis.com/css?family=Lexend:700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="style.css" rel="stylesheet">
+    <link href="member_dashboard.css" rel="stylesheet">
+</head>
+<body class="member-dashboard">
+    <div class="page-container">
+        <h1>Clan Member Tracking</h1>
+        <p class="subheader">Real-Time Clan Activity Monitoring</p>
+        
+        <!-- Clan and Battle Selection -->
+        <div class="selector-container">
+            <div class="selector-group">
+                <div class="selector-label">CLAN</div>
+                <div class="selector-value">
+                    <select id="clan-select">
+                        <option value="">-- Select Clan --</option>
+                        <option value="NONG">NONG</option>
+                        <option value="NXNG">NXNG</option>
+                    </select>
+                </div>
+            </div>
+            <div class="selector-group">
+                <div class="selector-label">BATTLE</div>
+                <div class="selector-value">
+                    <select id="battle-select">
+                        <option value="">All Battles</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <h5>Average Points</h5>
+                <p id="avg-points">-</p>
+            </div>
+            <div class="stat-card">
+                <h5>Clan Pts (Last 1h)</h5>
+                <p id="clan-points-hour">-</p>
+            </div>
+            <div class="stat-card">
+                <h5>Av. Pts (Last 1h)</h5>
+                <p id="avg-points-hour">-</p>
+            </div>
+            <div class="stat-card">
+                <h5>Average Uptime</h5>
+                <p id="avg-uptime">-</p>
+            </div>
+            <div class="stat-card">
+                <h5>Members Active</h5>
+                <p id="active-count">-</p>
+            </div>
+        </div>
+
+        <!-- Control Groups Container -->
+        <div class="control-groups-container">
+            <!-- Time Period Selector -->
+            <div class="control-group gain-period">
+                <label>Points Gained Time Period:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="timePeriod" value="4">4m</label>
+                    <label><input type="radio" name="timePeriod" value="60" checked>1h</label>
+                    <label><input type="radio" name="timePeriod" value="180">3h</label>
+                    <label><input type="radio" name="timePeriod" value="360">6h</label>
+                    <label><input type="radio" name="timePeriod" value="720">12h</label>
+                    <label><input type="radio" name="timePeriod" value="1440">24h</label>
+                </div>
+            </div>
+
+            <!-- Uptime Window Selector -->
+            <div class="control-group gain-period">
+                <label>Select Uptime Period:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="uptimeWindow" value="2" checked>2m</label>
+                    <label><input type="radio" name="uptimeWindow" value="6">6m</label>
+                    <label><input type="radio" name="uptimeWindow" value="10">10m</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Member Table -->
+        <section>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Member</th>
+                            <th>Points</th>
+                            <th>Inactive Time</th>
+                            <th>Uptime %</th>
+                            <th>Points Gained (<span id="points-gained-period">1h</span>)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="member-table-body">
+                        <tr>
+                            <td class="centered" colspan="5">Select a clan to view members</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Last Updated -->
+        <p class="muted align-right spacing-top">
+            <small id="last-updated"></small>
+        </p>
+    </div>
+
+    <script src="member_script.js"></script>
+</body>
+</html> 
