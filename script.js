@@ -30,6 +30,7 @@ let currentTimePeriod = 60;
 let currentForecastPeriod = 360;
 let currentTargetClan = '';
 let currentTargetRank = 1;
+let currentBattleId = localStorage.getItem('selectedBattleId') || 'PixelChickBattle'; // Default to stored or PixelChickBattle
 let comparisonChart = null; // Variable to hold the chart instance
 let selectedComparisonClans = []; // Array to hold selected clan names
 let currentComparisonTimePeriod = 60; // Default comparison period
@@ -38,6 +39,54 @@ let clanList = []; // Global clan list for dropdown and other uses
 
 // --- API Base URL ---
 const API_BASE_URL = "https://clan-dashboard-api.onrender.com"; // Your Render URL
+
+// --- Battle Selector Population ---
+async function populateBattleSelector() {
+    const battleSelect = document.getElementById('battle-select');
+    if (!battleSelect) {
+        console.error("Battle select element not found!");
+        return;
+    }
+
+    try {
+        console.log("Fetching battle IDs...");
+        const response = await fetch(`${API_BASE_URL}/api/battle_ids`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const battles = await response.json();
+        
+        // Clear existing options
+        battleSelect.innerHTML = '';
+        
+        // Get stored battle ID from localStorage
+        const storedBattleId = localStorage.getItem('selectedBattleId');
+        
+        // Add battles to selector
+        battles.forEach(battle => {
+            const option = document.createElement('option');
+            option.value = battle.battle_id;
+            option.textContent = battle.battle_id;
+            battleSelect.appendChild(option);
+        });
+
+        // Try to use stored battle ID if it exists in the options
+        if (storedBattleId && Array.from(battleSelect.options).some(opt => opt.value === storedBattleId)) {
+            battleSelect.value = storedBattleId;
+            currentBattleId = storedBattleId;
+        } else if (battles.length > 0) {
+            // Fall back to most recent battle (battles[0])
+            currentBattleId = battles[0].battle_id;
+            battleSelect.value = currentBattleId;
+        }
+
+        // Save the selected battle ID to localStorage
+        localStorage.setItem('selectedBattleId', currentBattleId);
+
+        console.log(`Populated battle selector with ${battles.length} battles. Current battle: ${currentBattleId}`);
+    } catch (error) {
+        console.error("Error populating battle selector:", error);
+        battleSelect.innerHTML = '<option value="">Error loading battles</option>';
+    }
+}
 
 // --- Fetch Countdown Data ---
 async function fetchCountdown() {
@@ -670,9 +719,12 @@ function toggleControls() {
     console.log(`Controls section is now ${controlsExpanded ? 'expanded' : 'collapsed'}`);
   }
 
-// --- Event Listeners & Initial Setup Function ---
-function initializeApp() {
+// Modify initializeApp() to include the battle selector population
+async function initializeApp() {
     console.log("Initializing app...");
+
+    // First, populate the battle selector and wait for it
+    await populateBattleSelector();
 
     // Set initial state from controls
     timePeriodRadios.forEach(radio => { if (radio.checked) currentTimePeriod = parseInt(radio.value, 10); });
@@ -680,6 +732,21 @@ function initializeApp() {
     currentTargetClan = targetClanSelect.value;
     currentTargetRank = parseInt(targetRankInput.value, 10) || 1;
     targetRankInput.value = currentTargetRank;
+
+    // Add battle selector event listener
+    const battleSelect = document.getElementById('battle-select');
+    if (battleSelect) {
+        battleSelect.addEventListener('change', (event) => {
+            currentBattleId = event.target.value;
+            console.log(`Battle ID changed to: ${currentBattleId}`);
+            // Refresh data when battle changes
+            fetchDashboardData();
+            if (currentTargetClan) {
+                fetchReachTargetData();
+            }
+        });
+    }
+
     // Set initial comparison time period state
     comparisonTimePeriodRadios.forEach(radio => {
          if (radio.checked) {
