@@ -1,0 +1,311 @@
+/* Member Details Specific Styles */
+.member-details {
+    padding: 20px;
+}
+
+.member-details .page-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 10px;
+}
+
+.member-details h1 {
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    font-family: 'Lexend', 'Segoe UI', Arial, sans-serif;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.member-details .subheader {
+    text-align: center;
+    color: var(--text-muted-color);
+    margin: 2px 0;
+}
+
+/* Status Ticker */
+.member-details .status-ticker {
+    width: 100%;
+    background-color: #2a2a2a;
+    border-radius: 5px;
+    padding: 6px 20px;
+    margin: 10px 0;
+    box-sizing: border-box; /* Ensure padding is included in width */
+}
+
+.member-details .status-ticker p {
+    color: #e0e0e0;
+    font-size: 1.5em;
+    margin: 0;
+    text-align: center;
+    line-height: 1.2;
+    letter-spacing: 0.05em; /* Add slight spacing between characters */
+}
+
+.member-details .status-ticker p.active {
+    color: #28a745; /* Bootstrap success green */
+}
+
+.member-details .status-ticker p.inactive {
+    color: #dc3545; /* Bootstrap danger red */
+}
+
+/* Stats Row */
+.member-details .stats-row {
+    display: flex;
+    flex-wrap: nowrap; /* Keep all cards in one row */
+    gap: 10px;
+    margin: 10px 0;
+    width: 100%; /* Ensure full width */
+}
+
+.member-details .stat-card {
+    flex: 1 1 0; /* Equal width distribution */
+    min-width: 0; /* Remove minimum width constraint */
+    background-color: #2a2a2a;
+    border-radius: 5px;
+    padding: 8px 20px 12px;
+    text-align: center;
+}
+
+.member-details .stat-card h5 {
+    color: #FFCC00;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+    text-align: center;
+}
+
+.member-details .stat-card p {
+    color: #e0e0e0;
+    font-size: 2em;
+    margin: 0;
+    text-align: center;
+}
+
+/* Status specific styles */
+.member-details .stat-card p#member-status.active {
+    color: #28a745; /* Bootstrap success green */
+}
+
+.member-details .stat-card p#member-status.inactive {
+    color: #dc3545; /* Bootstrap danger red */
+}
+
+.member-details .stat-card p#member-status .status-time {
+    display: block;
+    font-size: 0.7em;
+    margin-top: 2px;
+}
+
+/* Chart Sections */
+.member-details .chart-section {
+    background-color: var(--surface-color);
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-xl);
+}
+
+.member-details .chart-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 5px;
+}
+
+#points-range-slider {
+    width: 90%;  /* Reduced from 100% to create inset */
+    margin: 20px auto;  /* Changed to auto horizontal margins to center */
+}
+
+/* noUiSlider custom styling */
+.noUi-target.noUi-ltr.noUi-horizontal {
+    background: #2a2a2a;
+    border: none !important;
+    box-shadow: none !important;
+    height: 5px;
+    border-radius: 2.5px;
+}
+
+.noUi-connects {
+    background: #2a2a2a;
+    border-radius: 2.5px;
+    height: 5px !important;
+}
+
+.noUi-connect {
+    background: #4a4a4a !important;  /* Changed to a medium grey for the bar */
+}
+
+/* Base and origin styling */
+.noUi-base {
+    background: #2a2a2a !important;
+    border-radius: 2.5px !important;  /* Added to match target */
+}
+
+.noUi-origin {
+    background: #2a2a2a !important;
+    border-radius: 2.5px !important;  /* Added to match target */
+}
+
+/* Handle styling - consolidated */
+.noUi-handle {
+    width: 28px !important;
+    height: 28px !important;
+    right: -14px !important;
+    top: -11.5px !important;
+    background: #666666 !important;  /* Changed to a lighter grey for handles */
+    border: 2px solid #2a2a2a !important;
+    border-radius: 50% !important;
+    box-shadow: none !important;
+    cursor: grab;
+    outline: 2px solid rgba(102, 102, 102, 0.3);  /* Matching outline color */
+    outline-offset: 2px;
+}
+
+/* Extended click target */
+.noUi-handle:before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    background: transparent;
+}
+
+.noUi-handle:after {
+    display: none;
+}
+
+.noUi-handle:active {
+    cursor: grabbing;
+    box-shadow: 0 0 0 3px rgba(255, 204, 0, 0.3);
+}
+
+/* Hide time labels */
+.member-details .time-labels {
+    display: none;
+}
+
+.member-details .control-btn {
+    background-color: #2a2a2a;
+    color: #e0e0e0;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 5px 15px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+}
+
+.member-details .control-btn:hover {
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
+}
+
+.member-details .chart-section h5 {
+    color: var(--text-muted-color);
+    font-size: 0.95em;
+    margin-bottom: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.member-details .chart-container {
+    position: relative;
+    height: 260px;  /* Increased from 200px by 30% */
+    width: 100%;
+    margin: 10px 0;
+}
+
+/* Range Slider Styles */
+.member-details .chart-container canvas {
+    cursor: crosshair;
+}
+
+.member-details .chart-container .chartjs-zoom-range {
+    position: absolute;
+    bottom: -30px;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: rgba(0,123,255,0.1);
+    border-radius: 4px;
+}
+
+.member-details .chart-container .chartjs-zoom-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #007bff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.member-details .chart-container .chartjs-zoom-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #007bff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.member-details .activity-timeline-container {
+    position: relative;
+    height: 60px;
+    width: 100%;
+    margin: 10px 0;
+    padding-bottom: 20px;
+}
+
+/* Back Button */
+.member-details .back-button {
+    display: inline-block;
+    padding: 8px 16px;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    text-decoration: none;
+    border-radius: var(--border-radius);
+    transition: filter var(--transition-fast);
+}
+
+.member-details .back-button:hover {
+    filter: brightness(1.15);
+    text-decoration: none;
+    color: var(--text-color);
+}
+
+/* Footer */
+.member-details .footer {
+    margin-top: 20px;
+    text-align: right;
+}
+
+.member-details .footer .last-updated {
+    color: var(--text-muted-color);
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .member-details .stats-row {
+        flex-wrap: wrap;
+    }
+    .member-details .stat-card {
+        flex: 1 1 calc(33.333% - 7px);
+        min-width: calc(33.333% - 7px);
+    }
+}
+
+@media (max-width: 480px) {
+    .member-details .stat-card {
+        flex: 1 1 calc(50% - 5px);
+        min-width: calc(50% - 5px);
+    }
+} 

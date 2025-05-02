@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member Details</title>
+    <link href="https://fonts.googleapis.com/css?family=Lexend:700&display=swap" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <link href="member_details.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/nouislider/dist/nouislider.min.css" rel="stylesheet">
+</head>
+<body class="member-details">
+    <div class="page-container">
+        <h1 id="member-name">Loading...</h1>
+        <p class="subheader">
+            Clan: <span id="member-clan">Loading...</span> |
+            Battle: <span id="member-battle">Loading...</span>
+        </p>
+
+        <div class="status-ticker">
+            <p id="member-status">Loading...</p>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <h5>Current Points</h5>
+                <p id="current-points">Loading...</p>
+            </div>
+            <div class="stat-card">
+                <h5>Current Rank</h5>
+                <p id="current-rank">Loading...</p>
+            </div>
+            <div class="stat-card">
+                <h5>Average Uptime</h5>
+                <p id="avg-uptime">Loading...</p>
+            </div>
+            <div class="stat-card">
+                <h5>Points/Hour</h5>
+                <p id="points-per-hour">Loading...</p>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h5>Points History</h5>
+            <div class="chart-container">
+                <canvas id="points-history-chart"></canvas>
+            </div>
+            <div class="chart-controls">
+                <div id="points-range-slider"></div>
+                <div class="time-labels">
+                    <span id="time-start">Loading...</span>
+                    <span id="time-end">Loading...</span>
+                </div>
+                <button id="reset-zoom-btn" class="control-btn">Reset Zoom</button>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h5>Points Gained (Hour on Hour Comparison)</h5>
+            <div class="chart-container">
+                <canvas id="points-gained-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h5>Activity Timeline</h5>
+            <div class="activity-timeline-container">
+                <canvas id="activity-timeline"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h5>Rank History</h5>
+            <div class="chart-container">
+                <canvas id="rank-history-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p class="last-updated">Last updated: <span id="last-updated">Loading...</span></p>
+            <a href="member_dashboard.html" class="back-button">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@2.0.2/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.0.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nouislider/dist/nouislider.min.js"></script>
+    <script src="member_details.js"></script>
+</body>
+</html> 
