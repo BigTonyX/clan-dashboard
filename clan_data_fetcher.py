@@ -258,7 +258,7 @@ def should_collect_clan_data(client, clan_list):
         if not nong_current_points:
             return False, None
             
-        # 4. Get NONG's last stored points
+        # 4. Get NONG's last stored points from the previous war
         last_points = get_nong_last_points(client)
         
         if not last_points:
@@ -269,19 +269,19 @@ def should_collect_clan_data(client, clan_list):
         # 5. Get last battle_id for NONG
         last_battle_points = get_nong_last_points(client, current_battle["battle_id"])
         
+        # If we haven't started collecting for this battle yet, check if points have changed significantly
         if not last_battle_points:
-            # New war detection using margin
             margin = last_points * 0.10  # 10% margin
             points_difference = abs(nong_current_points - last_points)
             
             if points_difference > margin:
                 print(f"Points changed significantly (diff: {points_difference}, margin: {margin}) - new war detected")
                 return True, current_battle["battle_id"]
-                
-            print("Clan API still showing previous war data")
-            return False, None
-            
-        # 6. Already collecting for this battle - continue regardless of points
+            else:
+                print(f"Points haven't changed enough (diff: {points_difference}, margin: {margin}) - API still showing previous war data")
+                return False, None
+        
+        # If we're already collecting for this battle, continue collecting
         print("Continuing data collection for current battle")
         return True, current_battle["battle_id"]
         

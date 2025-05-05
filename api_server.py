@@ -131,10 +131,14 @@ async def get_dashboard_data(battle_id: str, time_period: int = 60, forecast_per
             response.raise_for_status()
             raw_data = response.json()
             
-            if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and
-                "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and
-                "FinishTime" in raw_data["data"]["configData"]):
-                
+            # Determine live battle ID from returned configName
+            live_battle_id = raw_data.get("data", {}).get("configName")
+            if live_battle_id != battle_id:
+                # Not the requested battle, treat as ended
+                print(f"Active battle ({live_battle_id}) != requested ({battle_id}); treating as over")
+                minutes_remaining = 0
+            else:
+                # Existing logic: use FinishTime for current war
                 finish_time_unix = raw_data["data"]["configData"]["FinishTime"]
                 war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix)
                 remaining_delta = war_finish_time_dt - datetime.datetime.now()
@@ -378,13 +382,26 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, battle_id: str
     try:
         # --- Fetch War End Time ---
         try:
-            countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5, verify=False); response.raise_for_status(); raw_data=response.json()
-            if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
-                finish_time_unix = raw_data["data"]["configData"]["FinishTime"]; war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix); remaining_delta = war_finish_time_dt - datetime.datetime.now()
-                if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
-                else: minutes_remaining = 0 # Handle case where war ended between fetch and now
+            countdown_url = "https://ps99.biggamesapi.io/api/activeClanBattle"
+            response = requests.get(countdown_url, timeout=5, verify=False)
+            response.raise_for_status()
+            raw_data = response.json()
+            # Determine live battle ID from returned configName
+            live_battle_id = raw_data.get("data", {}).get("configName")
+            if live_battle_id != battle_id:
+                # Not the requested battle, treat as ended
+                print(f"Active battle ({live_battle_id}) != requested ({battle_id}); treating as over")
+                minutes_remaining = 0
+            else:
+                # Existing logic: use FinishTime for current war
+                finish_time_unix = raw_data["data"]["configData"]["FinishTime"]
+                war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix)
+                remaining_delta = war_finish_time_dt - datetime.datetime.now()
+                if remaining_delta.total_seconds() > 0:
+                    minutes_remaining = remaining_delta.total_seconds() / 60
+                else:
+                    minutes_remaining = 0  # War ended between fetch and now
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
-            else: raise HTTPException(status_code=503, detail="Could not get valid war end time")
         except requests.exceptions.SSLError as e:
             print(f"SSL Error fetching war end time: {e}")
             minutes_remaining = 0

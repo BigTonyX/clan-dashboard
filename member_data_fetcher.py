@@ -363,21 +363,29 @@ def store_new_battle(mongo_client, battle_id, start_time):
         db = mongo_client[DB_NAME]
         battle_collection = db["battle_id_history"]
         
-        # First, set all existing battles to is_current: false
-        battle_collection.update_many(
-            {},  # match all documents
-            {"$set": {"is_current": False}}
+        # Use find_one_and_update for atomic operation
+        result = battle_collection.find_one_and_update(
+            {"battle_id": battle_id},  # Find by battle_id
+            {
+                "$set": {
+                    "battle_id": battle_id,
+                    "timestamp": start_time,
+                    "is_current": True
+                }
+            },
+            upsert=True,  # Create if doesn't exist
+            return_document=True  # Return the updated document
         )
         
-        # Then insert new battle with is_current: true
-        battle_collection.insert_one({
-            "battle_id": battle_id,
-            "timestamp": start_time,
-            "is_current": True
-        })
-        
-        logger.info(f"Recorded new battle: {battle_id} as current battle")
-        return True
+        if result:
+            # Set all other battles to is_current: false
+            battle_collection.update_many(
+                {"battle_id": {"$ne": battle_id}},
+                {"$set": {"is_current": False}}
+            )
+            logger.info(f"Updated battle: {battle_id} as current battle")
+            return True
+            
     except Exception as e:
         logger.error(f"Error storing new battle: {e}")
         return False
