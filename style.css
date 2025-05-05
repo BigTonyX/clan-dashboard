@@ -40,7 +40,7 @@ body {
 
 /* Overall page container */
 .page-container {
-    max-width: 1100px; /* Max width for the whole content */
+    max-width: 1200px; /* Widened container to match member dashboard */
     margin: 0 auto;    /* Center the page container */
     padding: 0 10px; /* Padding inside container */
 }
@@ -128,7 +128,7 @@ main#leaderboard-area {
 
 /* Controls Area - Heading outside flex/grid */
 #controls-area {
-    background-color: var(--surface-color);
+    background-color: var(--bg-color);
     padding: var(--spacing-lg);
     border-radius: var(--border-radius);
     margin-bottom: var(--spacing-xl);
@@ -213,7 +213,7 @@ main#leaderboard-area {
     padding: 4px 10px;
     border-radius: 20px;
     border: 1px solid var(--border-color);
-    width: 64px;
+    width: auto;
     transition: all var(--transition-fast);
 }
   
@@ -846,9 +846,15 @@ input[type="number"] {
 .controls-row {
     display: flex;
     flex-direction: row;
-    align-items: stretch; /* Make both cards the same height */
-    gap: 24px;
+    align-items: stretch;
+    gap: 12px;
     width: 100%;
+}
+
+/* Push battle selector and clan dropdown to the right */
+.controls-row .battle-selector {
+    margin-left: auto;
+    margin-right: 4px; /* reduced spacing */
 }
 
 .tracked-clan-dropdown,
@@ -956,3 +962,28 @@ input[type="number"] {
     font-weight: 700;
     letter-spacing: 0.04em;
 }
+
+/* Leaderboard header on index page */
+.leaderboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+.leaderboard-header h2 {
+    margin: 0;
+}
+.member-dashboard-btn {
+    display: inline-block;
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    font-weight: bold;
+    transition: background-color var(--transition-fast);
+}
+.member-dashboard-btn:hover {
+    background-color: var(--highlight-color);
+}
+

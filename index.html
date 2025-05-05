@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css?family=Lexend:700&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/png" href="https://pbs.twimg.com/profile_images/1856672092923494401/5q25tDpr_400x400.jpg">
+  <link rel="icon" type="image/webp" href="static/images/clan leadrboard favicon.webp">
 </head>
 <body>
 
@@ -40,7 +40,7 @@
               <label><input type="radio" name="time_period" value="1440"> 24h</label>
             </div>
           </div>
-          <div class="battle-selector">
+          <div class="tracked-clan-dropdown">
             <label for="battle-select">Battle:</label>
             <select id="battle-select" name="battle">
               <option value="">Loading battles...</option>
@@ -78,7 +78,10 @@
     </section>
 
     <main id="leaderboard-area">
-      <h2>Leaderboard</h2>
+      <div class="leaderboard-header">
+        <h2>Leaderboard</h2>
+        <a href="member_dashboard.html" class="member-dashboard-btn" target="_blank" rel="noopener noreferrer">Member Dashboard</a>
+      </div>
       <table id="leaderboard-table">
         <thead>
           <tr>

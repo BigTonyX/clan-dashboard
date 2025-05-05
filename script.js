@@ -30,7 +30,7 @@ let currentTimePeriod = 60;
 let currentForecastPeriod = 360;
 let currentTargetClan = '';
 let currentTargetRank = 1;
-let currentBattleId = localStorage.getItem('selectedBattleId') || 'PixelChickBattle'; // Default to stored or PixelChickBattle
+let currentBattleId = null; // Will be set to the latest battle from API
 let comparisonChart = null; // Variable to hold the chart instance
 let selectedComparisonClans = []; // Array to hold selected clan names
 let currentComparisonTimePeriod = 60; // Default comparison period
@@ -38,7 +38,8 @@ let controlsExpanded = true; // Initial state of controls
 let clanList = []; // Global clan list for dropdown and other uses
 
 // --- API Base URL ---
-const API_BASE_URL = "https://clan-dashboard-api.onrender.com"; // Your Render URL
+// const API_BASE_URL = "https://clan-dashboard-api.onrender.com"; // Your Render URL
+const API_BASE_URL = "http://127.0.0.1:8000/api/clan"; // Local server for testing with correct path prefix
 
 // --- Battle Selector Population ---
 async function populateBattleSelector() {
@@ -77,9 +78,6 @@ async function populateBattleSelector() {
             currentBattleId = battles[0].battle_id;
             battleSelect.value = currentBattleId;
         }
-
-        // Save the selected battle ID to localStorage
-        localStorage.setItem('selectedBattleId', currentBattleId);
 
         console.log(`Populated battle selector with ${battles.length} battles. Current battle: ${currentBattleId}`);
     } catch (error) {
@@ -209,7 +207,7 @@ async function fetchReachTargetData() {
     console.log(`Fetching reach target data for ${currentTargetClan} to rank ${currentTargetRank} (forecast period ${currentForecastPeriod}m)...`);
     reachTargetDisplay.innerHTML = '<p>Calculating...</p>';
 
-    const url = `${API_BASE_URL}/api/clan_reach_target?clan_name=${encodeURIComponent(currentTargetClan)}&target_rank=${currentTargetRank}&forecast_period=${currentForecastPeriod}`;
+    const url = `${API_BASE_URL}/clan_reach_target?clan_name=${encodeURIComponent(currentTargetClan)}&target_rank=${currentTargetRank}&forecast_period=${currentForecastPeriod}&battle_id=${encodeURIComponent(currentBattleId)}`;
 
     try {
         const response = await fetch(url);
@@ -247,7 +245,7 @@ async function fetchReachTargetData() {
 // --- Fetch Dashboard Data (and update controls/highlighting) ---
 async function fetchDashboardData() {
     console.log(`Fetching dashboard data with timePeriod=${currentTimePeriod}, forecastPeriod=${currentForecastPeriod}...`);
-    const url = `${API_BASE_URL}/api/dashboard?time_period=${currentTimePeriod}&forecast_period=${currentForecastPeriod}`;
+    const url = `${API_BASE_URL}/dashboard?time_period=${currentTimePeriod}&forecast_period=${currentForecastPeriod}&battle_id=${encodeURIComponent(currentBattleId)}`;
     leaderboardBody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>'; // Show loading state
   
     try {
@@ -558,7 +556,7 @@ async function updateComparisonChart() {
 
     // --- Construct URL Correctly ---
     // Start with the base API endpoint
-    let comparisonUrl = `${API_BASE_URL}/api/clan_comparison?time_period=${currentComparisonTimePeriod}`;
+    let comparisonUrl = `${API_BASE_URL}/clan_comparison?time_period=${currentComparisonTimePeriod}&battle_id=${encodeURIComponent(currentBattleId)}`;
     // Add each selected clan name as a separate parameter
     selectedComparisonClans.forEach(name => {
         comparisonUrl += `&clan_names=${encodeURIComponent(name)}`;
