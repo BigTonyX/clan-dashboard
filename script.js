@@ -38,8 +38,8 @@ let controlsExpanded = true; // Initial state of controls
 let clanList = []; // Global clan list for dropdown and other uses
 
 // --- API Base URL ---
-// const API_BASE_URL = "https://clan-dashboard-api.onrender.com"; // Your Render URL
-const API_BASE_URL = "http://127.0.0.1:8000/api/clan"; // Local server for testing with correct path prefix
+// const API_BASE_URL = "http://127.0.0.1:8000/api/clan"; // Local server for testing with correct path prefix
+const API_BASE_URL = "https://clan-dashboard-api.onrender.com/api/clan"; // Production Render server
 
 // --- Battle Selector Population ---
 async function populateBattleSelector() {

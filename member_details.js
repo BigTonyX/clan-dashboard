@@ -10,7 +10,8 @@ if (!clan || !userId || !battle) {
 }
 
 // Constants
-const API_BASE_URL = 'http://127.0.0.1:8000';
+// const API_BASE_URL = 'http://127.0.0.1:8000'; // Local combined API server
+const API_BASE_URL = 'https://clan-dashboard-api.onrender.com'; // Production Render server
 const LOADING_PLACEHOLDER = '<span class="loading-spinner"></span>';
 
 // --- DOM Elements ---
