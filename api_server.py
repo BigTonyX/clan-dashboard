@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException # Make sure HTTPException is added
-from typing import List # Add this
+from typing import List, Optional # Add this
 from fastapi import FastAPI, HTTPException, Query # Add Query here
-import uvicorn
 import requests                     # Needed to call the external API
 import datetime                     # Needed for time calculations
 import time                         # Needed to get the current time easily
@@ -12,39 +11,41 @@ from dotenv import load_dotenv
 load_dotenv()
 from pymongo import MongoClient
 from pymongo.collection import Collection
-from fastapi.middleware.cors import CORSMiddleware
 
 # --- MongoDB Atlas Connection ---
 MONGO_CONNECTION_STRING = os.environ.get("MONGO_URI")
 DB_NAME = "clan_dashboard_db" # Use the same database name as in the fetcher
 
-# Create the FastAPI app instance
-app = FastAPI(title="Clan Dashboard API", version="0.1.0")
-
-# --- CORS Middleware ---
-# Define allowed origins (domains) that can access your API
-# Using ["*"] allows all origins, which is simple for development
-# and okay for a public API like this.
-# For more security later, you might restrict this to the specific domain
-# where your frontend will eventually be hosted.
-# Adding "null" specifically allows requests from local file:/// pages.
-origins = [
-    "*", # Allows all origins
-    # Or be more specific:
-    # "null", # Allow local file:/// origin
-    # "http://localhost", # Allow local development server
-    # "http://127.0.0.1",
-    # Add your future frontend deployment URL here e.g. "https://your-frontend.onrender.com"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,       # List of origins allowed
-    allow_credentials=True,    # Allow cookies (not needed now, but common)
-    allow_methods=["*"],       # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],       # Allow all headers
+# Create a global MongoDB client with connection pooling
+mongo_client = MongoClient(
+    MONGO_CONNECTION_STRING,
+    serverSelectionTimeoutMS=5000,
+    maxPoolSize=50,  # Maximum number of connections in the pool
+    minPoolSize=10,  # Minimum number of connections in the pool
+    maxIdleTimeMS=30000,  # Close idle connections after 30 seconds
+    connectTimeoutMS=5000,  # Timeout for initial connection
+    socketTimeoutMS=5000,  # Timeout for operations
+    retryWrites=True,
+    retryReads=True
 )
-# --- End CORS Middleware ---
+
+# Create the FastAPI app instance
+app = FastAPI(
+    title="Clan Dashboard API",
+    version="0.1.0",
+    docs_url=None,
+    redoc_url=None
+)
+
+# --- Create Indexes ---
+try:
+    db = mongo_client[DB_NAME]
+    clans_collection = db["clans"]
+    # Create compound index on battle_id and timestamp
+    clans_collection.create_index([("battle_id", pymongo.ASCENDING), ("timestamp", pymongo.DESCENDING)])
+    print("Created compound index on battle_id and timestamp")
+except Exception as e:
+    print(f"Error creating indexes: {e}")
 
 # --- Global icon cache ---
 ICON_CACHE = {}
@@ -85,89 +86,101 @@ def format_timedelta(delta):
 async def get_countdown():
     """Fetches the war end time and returns the formatted countdown."""
     countdown_url = "https://ps99.biggamesapi.io/api/activeClanBattle"
-    # Removed the print here as fetching is confirmed working
-    # print(f"Attempting to fetch countdown data from: {countdown_url}")
-
     try:
-        response = requests.get(countdown_url, timeout=10)
+        response = requests.get(countdown_url, timeout=5, verify=False)
         response.raise_for_status()
         raw_data = response.json()
-        # Removed print here as extraction is confirmed working
-        # print(f"Successfully fetched raw data: {raw_data}")
-
+        
         if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and
             "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and
             "FinishTime" in raw_data["data"]["configData"]):
-
+            
             finish_time_unix = raw_data["data"]["configData"]["FinishTime"]
-            # Removed print here as extraction is confirmed working
-            # print(f"Successfully extracted FinishTime (Unix): {finish_time_unix}")
-
-            try:
-                finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix)
-                now_dt = datetime.datetime.now()
-                remaining_delta = finish_time_dt - now_dt
-                # Removed print here as calculation is confirmed working
-                # print(f"Calculated remaining timedelta: {remaining_delta}")
-
-                # --- Format the delta using the helper function ---
-                countdown_str = format_timedelta(remaining_delta)
-                print(f"Formatted countdown string: {countdown_str}") # Keep a log
-
-                # --- Return the final JSON structure ---
-                return {"countdown": countdown_str}
-
-            except ValueError as ve:
-                print(f"Error converting timestamp or calculating delta: {ve}")
-                raise HTTPException(status_code=500, detail="Error processing finish time.")
-
-        else:
-            print(f"Error: Unexpected data structure in response: {raw_data}")
-            raise HTTPException(status_code=500, detail="Unexpected data structure from countdown API.")
-
+            finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix)
+            now_dt = datetime.datetime.now()
+            remaining_delta = finish_time_dt - now_dt
+            
+            countdown_str = format_timedelta(remaining_delta)
+            return {"countdown": countdown_str}
+            
+    except requests.exceptions.SSLError as e:
+        print(f"SSL Error fetching countdown data: {e}")
+        return {"countdown": "Unknown"}
     except requests.exceptions.RequestException as e:
         print(f"Error fetching countdown data: {e}")
-        raise HTTPException(status_code=503, detail=f"Could not fetch countdown data: {e}")
+        return {"countdown": "Unknown"}
     except Exception as e:
-         print(f"An unexpected error occurred processing countdown data: {e}")
-         import traceback
-         traceback.print_exc()
-         raise HTTPException(status_code=500, detail=f"Internal server error processing countdown data: {e}")
-
-
-
+        print(f"Unexpected error in countdown: {e}")
+        return {"countdown": "Unknown"}
 
 # Dashboard endpoint (OPTIMIZED)
-@app.get("/api/dashboard")
-async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
+@app.get("/dashboard")
+async def get_dashboard_data(battle_id: str, time_period: int = 60, forecast_period: int = 360):
     """ Fetches and calculates clan data from MongoDB using bulk queries. """
-    print(f"/api/dashboard called with time_period={time_period}, forecast_period={forecast_period}")
+    print(f"\n=== NEW DASHBOARD REQUEST ===")
+    print(f"Requested battle_id: {battle_id}")
+    print(f"time_period: {time_period}, forecast_period: {forecast_period}")
 
     client = None; dashboard_results = []; minutes_remaining = 0; war_finish_time_dt = None
 
     try:
         # --- Fetch War End Time ---
-        try: # Fetch countdown data
-            countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
-            if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
-                finish_time_unix = raw_data["data"]["configData"]["FinishTime"]; war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix); remaining_delta = war_finish_time_dt - datetime.datetime.now()
-                if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
+        try:
+            countdown_url = "https://ps99.biggamesapi.io/api/activeClanBattle"
+            response = requests.get(countdown_url, timeout=5, verify=False)
+            response.raise_for_status()
+            raw_data = response.json()
+            
+            if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and
+                "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and
+                "FinishTime" in raw_data["data"]["configData"]):
+                
+                finish_time_unix = raw_data["data"]["configData"]["FinishTime"]
+                war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix)
+                remaining_delta = war_finish_time_dt - datetime.datetime.now()
+                minutes_remaining = remaining_delta.total_seconds() / 60 if remaining_delta.total_seconds() > 0 else 0
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
-            else: print("Could not get valid war end time.")
-        except Exception as cd_err: print(f"Error fetching war end time: {cd_err}") # Continue even if countdown fails
+        except requests.exceptions.SSLError as e:
+            print(f"SSL Error fetching war end time: {e}")
+            minutes_remaining = 0
+        except Exception as e:
+            print(f"Error fetching war end time: {e}")
+            minutes_remaining = 0
 
         # --- Connect to MongoDB ---
         client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000); db = client[DB_NAME]; clans_collection = db["clans"]; client.admin.command('ping'); print("MongoDB connection successful for dashboard.")
 
-        # === Get Latest Timestamp ===
-        latest_doc = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)]);
-        if not latest_doc or not latest_doc.get('timestamp'): print("No data found."); return []
-        latest_ts_dt = latest_doc['timestamp']; latest_timestamp_str = latest_ts_dt.isoformat(); print(f"Latest timestamp: {latest_timestamp_str}")
-
         # === Query 1: Get Latest Data for Top 25 ===
-        print("Executing query 1: Get latest top 25 data...")
-        query_latest = {"timestamp": latest_ts_dt}
-        projection_latest = {"_id":0, "clan_name":1, "current_points":1, "members":1, "timestamp":1} # Only fetch needed fields initially
+        print("\n=== Query 1: Getting latest timestamp ===")
+        print(f"Searching for latest document with battle_id: {battle_id}")
+        # First get the latest timestamp for this specific battle
+        latest_doc = clans_collection.find_one(
+            {"battle_id": battle_id},
+            sort=[("timestamp", pymongo.DESCENDING)]
+        );
+        if not latest_doc: 
+            print(f"WARNING: No documents found for battle_id: {battle_id}")
+            return []
+        if not latest_doc.get('timestamp'):
+            print(f"WARNING: Document found but no timestamp field for battle_id: {battle_id}")
+            return []
+            
+        latest_ts_dt = latest_doc['timestamp']
+        latest_timestamp_str = latest_ts_dt.isoformat()
+        print(f"Found latest document for battle {battle_id}:")
+        print(f"  Timestamp: {latest_timestamp_str}")
+        print(f"  Clan name: {latest_doc.get('clan_name')}")
+        print(f"  Points: {latest_doc.get('current_points')}")
+        print(f"  Battle ID: {latest_doc.get('battle_id')}")  # Explicitly log the battle_id from the document
+
+        # Now get the top 25 clans for this battle at this timestamp
+        query_latest = {
+            "battle_id": battle_id,
+            "timestamp": latest_ts_dt
+        }
+        print(f"\n=== Query 2: Getting top 25 clans ===")
+        print(f"Query filter: {query_latest}")
+        projection_latest = {"_id":0, "clan_name":1, "current_points":1, "members":1, "timestamp":1}
         latest_docs_cursor = clans_collection.find(query_latest, projection=projection_latest).sort("current_points", pymongo.DESCENDING).limit(25);
         ranked_latest_list = []
         rank = 1
@@ -179,6 +192,7 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         print(f"Query 1 processed {len(ranked_latest_list)} rows.")
         if not ranked_latest_list: return []
         top_25_clan_names = [row['clan_name'] for row in ranked_latest_list]
+        print(f"Top 25 clans: {top_25_clan_names}")
 
         # --- Lazy-load icon cache for top 25 clans ---
         clan_details_collection = db["clan_details"]
@@ -195,8 +209,20 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
 
         # --- Bulk Query for First Seen ---
         try:
-            print("Executing bulk query for first_seen...")
-            pipeline_first_seen = [ {'$match': {'clan_name': {'$in': top_25_clan_names}, 'first_seen': {'$ne': None}}}, {'$sort': {'timestamp': pymongo.ASCENDING}}, {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$first_seen'}}} ]
+            print("\n=== Query 3: Getting first seen data ===")
+            pipeline_first_seen = [ 
+                {'$match': {
+                    'clan_name': {'$in': top_25_clan_names}, 
+                    'first_seen': {'$ne': None}, 
+                    'battle_id': battle_id
+                }}, 
+                {'$sort': {'timestamp': pymongo.ASCENDING}}, 
+                {'$group': {
+                    '_id': '$clan_name', 
+                    'first_seen_ts': {'$first': '$first_seen'}
+                }}
+            ]
+            print(f"First seen pipeline: {pipeline_first_seen}")
             first_seen_map = {row['_id']: row['first_seen_ts'] for row in clans_collection.aggregate(pipeline_first_seen)}
             print(f"Found first_seen data for {len(first_seen_map)} clans.")
         except Exception as fs_err: print(f"Error querying first_seen: {fs_err}")
@@ -204,8 +230,21 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         # --- Bulk Query for Gain Data ---
         try:
             target_past_dt_gain = latest_ts_dt - datetime.timedelta(minutes=time_period)
+            print(f"\n=== Query 4: Getting gain data ===")
             print(f"Target past timestamp for gain: {target_past_dt_gain.isoformat()}")
-            pipeline_past_gain = [ {'$match': { 'clan_name': {'$in': top_25_clan_names}, 'timestamp': {'$lte': target_past_dt_gain} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points': {'$first': '$current_points'} }} ]
+            pipeline_past_gain = [ 
+                {'$match': { 
+                    'clan_name': {'$in': top_25_clan_names}, 
+                    'timestamp': {'$lte': target_past_dt_gain},
+                    'battle_id': battle_id
+                }}, 
+                {'$sort': {'timestamp': pymongo.DESCENDING}}, 
+                {'$group': { 
+                    '_id': '$clan_name', 
+                    'past_points': {'$first': '$current_points'} 
+                }} 
+            ]
+            print(f"Gain pipeline: {pipeline_past_gain}")
             past_data_map_gain = {row['_id']: row['past_points'] for row in clans_collection.aggregate(pipeline_past_gain)}
             print(f"Gain query returned {len(past_data_map_gain)} results.")
         except Exception as q2_err: print(f"Error in gain aggregation: {q2_err}")
@@ -213,24 +252,41 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         # --- Bulk Query for Forecast Data ---
         try:
             target_past_dt_forecast = latest_ts_dt - datetime.timedelta(minutes=forecast_period)
+            print(f"\n=== Query 5: Getting forecast data ===")
             print(f"Target past timestamp for forecast: {target_past_dt_forecast.isoformat()}")
-            pipeline_past_forecast = [ {'$match': { 'clan_name': {'$in': top_25_clan_names}, 'timestamp': {'$lte': target_past_dt_forecast} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }} ]
+            pipeline_past_forecast = [ 
+                {'$match': { 
+                    'clan_name': {'$in': top_25_clan_names}, 
+                    'timestamp': {'$lte': target_past_dt_forecast},
+                    'battle_id': battle_id
+                }}, 
+                {'$sort': {'timestamp': pymongo.DESCENDING}}, 
+                {'$group': { 
+                    '_id': '$clan_name', 
+                    'past_points_forecast': {'$first': '$current_points'} 
+                }} 
+            ]
+            print(f"Forecast pipeline: {pipeline_past_forecast}")
             past_data_map_forecast = {row['_id']: row['past_points_forecast'] for row in clans_collection.aggregate(pipeline_past_forecast)}
             print(f"Forecast query returned {len(past_data_map_forecast)} results.")
         except Exception as q3_err: print(f"Error in forecast aggregation: {q3_err}")
 
         # === Calculate All Fields In Python ===
-        print("Calculating all fields...")
+        print("\n=== Calculating final results ===")
         projections = {} # Store projections for forecast ranking
 
         # --- First pass: Calculate Gain, Check 6h, Calc Projection ---
         for clan_result in ranked_latest_list: # Modify the list in place
             clan_name = clan_result['clan_name']
             current_points = clan_result['current_points']
+            print(f"\nProcessing clan: {clan_name}")
+            print(f"Current points: {current_points}")
 
             # Calculate X-Minute Gain
             past_points_gain = past_data_map_gain.get(clan_name)
             clan_result['x_minute_gain'] = (current_points - past_points_gain) if past_points_gain is not None else None
+            print(f"Past points for gain: {past_points_gain}")
+            print(f"Calculated gain: {clan_result['x_minute_gain']}")
 
             # Check 6-hour rule
             has_6h_data = False
@@ -238,6 +294,7 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
             if first_seen_dt and isinstance(first_seen_dt, datetime.datetime):
                 if first_seen_dt.replace(tzinfo=None) <= six_hours_ago.replace(tzinfo=None): has_6h_data = True
             clan_result['has_6h_data'] = has_6h_data # Keep temporarily
+            print(f"Has 6h data: {has_6h_data}")
 
             # Calculate Projection Score
             projected_points = None
@@ -250,6 +307,7 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
                         projected_points = current_points + (gain_rate_per_minute * minutes_remaining)
             # Store projection score or fallback to current points for ranking
             projections[clan_name] = projected_points if projected_points is not None else current_points
+            print(f"Projected points: {projections[clan_name]}")
 
         # --- Rank Projections ---
         # Create list including projection score for sorting
@@ -261,9 +319,11 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
         final_dashboard_results = []
         for i, clan_result in enumerate(ranked_latest_list):
             clan_name = clan_result['clan_name']
+            print(f"\nFinal processing for clan: {clan_name}")
 
             # Calculate Gap
             clan_result['gap'] = 0 if clan_result['current_rank'] == 1 else ranked_latest_list[i-1]['current_points'] - clan_result['current_points']
+            print(f"Gap: {clan_result['gap']}")
 
             # Calculate Time to Catch
             time_to_catch_str = "N/A"; gain_difference = 0
@@ -279,9 +339,11 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
                         try: minutes_to_catch=(clan_result['gap']*time_period)/gain_difference; time_to_catch_str=format_timedelta(datetime.timedelta(minutes=minutes_to_catch));
                         except Exception as calc_err: print(f"Error calculating T2C for {clan_name}: {calc_err}"); time_to_catch_str = "Error"
             clan_result['time_to_catch'] = time_to_catch_str
+            print(f"Time to catch: {time_to_catch_str}")
 
             # Assign Forecast Rank
             clan_result['forecast'] = forecast_ranks.get(clan_name) if clan_result['has_6h_data'] else None
+            print(f"Forecast rank: {clan_result['forecast']}")
 
             # Remove helper field
             del clan_result['has_6h_data']
@@ -291,20 +353,21 @@ async def get_dashboard_data(time_period: int = 60, forecast_period: int = 360):
 
             final_dashboard_results.append(clan_result)
 
+        print(f"\n=== Returning {len(final_dashboard_results)} results ===")
+        return final_dashboard_results
+
     # --- Error Handling & Connection Closing ---
     except pymongo.errors.ConnectionFailure as e: print(f"MongoDB connection error: {e}"); raise HTTPException(status_code=503, detail="DB connection error.")
     except HTTPException: raise
     except Exception as e: print(f"Unexpected error: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
     finally:
-        if client: client.close(); print("MongoDB connection closed for /api/dashboard.")
-
-    return final_dashboard_results
+        if client: client.close(); print("MongoDB connection closed for /dashboard.")
 
 # Endpoint to calculate needs for a specific clan to reach a target rank (OPTIMIZED & CORRECTED)
-@app.get("/api/clan_reach_target")
-async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_period: int = 360):
+@app.get("/clan_reach_target")
+async def get_clan_reach_target(clan_name: str, target_rank: int, battle_id: str, forecast_period: int = 360):
     """ Calculates extra points per hour using MongoDB, optimized with bulk queries. """
-    print(f"/api/clan_reach_target called for {clan_name}, target_rank={target_rank}, forecast_period={forecast_period}")
+    print(f"/clan_reach_target called for {clan_name}, target_rank={target_rank}, forecast_period={forecast_period}, battle_id={battle_id}")
 
     # --- Input Validation ---
     if target_rank <= 0 or target_rank > 250: raise HTTPException(status_code=400, detail="Invalid target_rank.")
@@ -315,24 +378,39 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
     try:
         # --- Fetch War End Time ---
         try:
-            countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5); response.raise_for_status(); raw_data=response.json()
+            countdown_url="https://ps99.biggamesapi.io/api/activeClanBattle"; response=requests.get(countdown_url, timeout=5, verify=False); response.raise_for_status(); raw_data=response.json()
             if ("data" in raw_data and isinstance(raw_data.get("data"), dict) and "configData" in raw_data["data"] and isinstance(raw_data["data"].get("configData"), dict) and "FinishTime" in raw_data["data"]["configData"]):
                 finish_time_unix = raw_data["data"]["configData"]["FinishTime"]; war_finish_time_dt = datetime.datetime.fromtimestamp(finish_time_unix); remaining_delta = war_finish_time_dt - datetime.datetime.now()
                 if remaining_delta.total_seconds() > 0: minutes_remaining = remaining_delta.total_seconds() / 60
                 else: minutes_remaining = 0 # Handle case where war ended between fetch and now
                 print(f"War ends at: {war_finish_time_dt}, Minutes remaining: {minutes_remaining:.2f}")
             else: raise HTTPException(status_code=503, detail="Could not get valid war end time")
-        except Exception as cd_err: raise HTTPException(status_code=503, detail=f"Could not get war end time: {cd_err}")
+        except requests.exceptions.SSLError as e:
+            print(f"SSL Error fetching war end time: {e}")
+            minutes_remaining = 0
+        except Exception as cd_err:
+            print(f"Error fetching war end time: {cd_err}")
+            minutes_remaining = 0
 
         # --- Connect to MongoDB ---
         client = MongoClient(MONGO_CONNECTION_STRING, serverSelectionTimeoutMS=5000); db = client[DB_NAME]; clans_collection = db["clans"]; client.admin.command('ping'); print("MongoDB connection successful.")
 
         # === Query 1: Get Latest Data ===
-        latest_doc_fetch = clans_collection.find_one(sort=[("timestamp", pymongo.DESCENDING)]);
-        if not latest_doc_fetch or not latest_doc_fetch.get('timestamp'): raise HTTPException(status_code=503, detail="No current data.")
+        latest_doc_fetch = clans_collection.find_one(
+            {"battle_id": battle_id},
+            sort=[("timestamp", pymongo.DESCENDING)]
+        );
+        if not latest_doc_fetch or not latest_doc_fetch.get('timestamp'): 
+            raise HTTPException(status_code=503, detail="No current data.")
         latest_ts_dt = latest_doc_fetch['timestamp']
-        query_latest = {"timestamp": latest_ts_dt}
-        latest_docs_cursor = clans_collection.find(query_latest, {"_id":0, "clan_name":1, "current_points":1, "timestamp":1}).sort("current_points", pymongo.DESCENDING).limit(250);
+        query_latest = {
+            "timestamp": latest_ts_dt,
+            "battle_id": battle_id
+        }
+        latest_docs_cursor = clans_collection.find(
+            query_latest, 
+            {"_id":0, "clan_name":1, "current_points":1, "timestamp":1}
+        ).sort("current_points", pymongo.DESCENDING).limit(250);
         ranked_latest_map = {doc['clan_name']: doc for doc in latest_docs_cursor} # Store as map keyed by name
         if not ranked_latest_map: raise HTTPException(status_code=503, detail="No current clan data available.")
         top_clan_names = list(ranked_latest_map.keys()) # Get names
@@ -355,15 +433,20 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
 
         # === OPTIMIZATION: Bulk Queries for History ===
         # --- Bulk Query for First Seen Timestamps ---
-        print("Executing bulk query for first_seen timestamps...")
-        pipeline_first_seen = [ {'$match': {'clan_name': {'$in': top_clan_names}, 'first_seen': {'$ne': None}}}, {'$sort': {'timestamp': pymongo.ASCENDING}}, {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$first_seen'}}} ]
+        print("Executing bulk query for first_seen (using timestamp) data...")
+        pipeline_first_seen = [
+            {'$match': {'clan_name': {'$in': top_clan_names}, 'battle_id': battle_id}},
+            {'$sort': {'timestamp': pymongo.ASCENDING}},
+            {'$group': {'_id': '$clan_name', 'first_seen_ts': {'$first': '$timestamp'}}}
+        ]
+        print(f"First seen pipeline (by timestamp): {pipeline_first_seen}")
         first_seen_map = {row['_id']: row['first_seen_ts'] for row in clans_collection.aggregate(pipeline_first_seen)}
         print(f"Found first_seen data for {len(first_seen_map)} clans.")
 
         # --- Bulk Query for Past Forecast Data ---
         print(f"Executing bulk query for past forecast data (period={forecast_period} min)...")
         target_forecast_past_dt = latest_ts_dt - datetime.timedelta(minutes=forecast_period)
-        pipeline_past_forecast = [ {'$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_forecast_past_dt} }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }} ]
+        pipeline_past_forecast = [ {'$match': { 'clan_name': {'$in': top_clan_names}, 'timestamp': {'$lte': target_forecast_past_dt}, 'battle_id': battle_id }}, {'$sort': {'timestamp': pymongo.DESCENDING}}, {'$group': { '_id': '$clan_name', 'past_points_forecast': {'$first': '$current_points'} }} ]
         past_data_map_forecast = {row['_id']: row['past_points_forecast'] for row in clans_collection.aggregate(pipeline_past_forecast)}
         print(f"Found past forecast data for {len(past_data_map_forecast)} clans.")
 
@@ -434,7 +517,7 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
     except HTTPException: raise
     except Exception as e: print(f"Unexpected error: {e}"); import traceback; traceback.print_exc(); raise HTTPException(status_code=500, detail=f"Internal error: {e}")
     finally:
-        if client: client.close(); print("MongoDB connection closed for /api/clan_reach_target.")
+        if client: client.close(); print("MongoDB connection closed for /clan_reach_target.")
 
     # Format final result
     if extra_points_per_hour is None: result_value = None
@@ -443,13 +526,14 @@ async def get_clan_reach_target(clan_name: str, target_rank: int, forecast_perio
     return {"extra_points_per_hour": result_value }
 
 # Endpoint to get historical data for comparing clans
-@app.get("/api/clan_comparison")
+@app.get("/clan_comparison")
 async def get_clan_comparison(
+    battle_id: str,
     clan_names: List[str] = Query(..., min_length=1, max_length=3, title="Clan Names", description="List of 1 to 3 clan names to compare."),
     time_period: int = Query(60, gt=0, title="Time Period (minutes)", description="Lookback period in minutes.")
 ):
     """ Fetches historical point data from MongoDB for clan comparison. """
-    print(f"/api/clan_comparison called for clans: {clan_names}, time_period: {time_period}")
+    print(f"/clan_comparison called for clans: {clan_names}, time_period: {time_period}, battle_id: {battle_id}")
 
     client = None # Initialize client variable
     comparison_data = []
@@ -468,7 +552,8 @@ async def get_clan_comparison(
         # Construct MongoDB query
         query_filter = {
             "clan_name": {"$in": clan_names}, # Match clans in the list
-            "timestamp": {"$gte": start_dt_utc} # Match timestamps within the period
+            "timestamp": {"$gte": start_dt_utc}, # Match timestamps within the period
+            "battle_id": battle_id # Match the specific battle
         }
         # Define projection to return only necessary fields + exclude MongoDB's _id
         projection = {
@@ -495,17 +580,17 @@ async def get_clan_comparison(
         print(f"Query returned {len(comparison_data)} comparison data points.")
 
     except pymongo.errors.ConnectionFailure as e:
-         print(f"MongoDB connection error in /api/clan_comparison: {e}")
+         print(f"MongoDB connection error in /clan_comparison: {e}")
          raise HTTPException(status_code=503, detail="Database connection error.")
     except Exception as e:
-        print(f"Unexpected error in /api/clan_comparison: {e}")
+        print(f"Unexpected error in /clan_comparison: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error in comparison endpoint: {e}")
     finally:
         if client:
             client.close()
-            print("MongoDB connection closed for /api/clan_comparison.")
+            print("MongoDB connection closed for /clan_comparison.")
 
     return comparison_data
 
@@ -538,10 +623,4 @@ async def get_battle_ids():
     finally:
         if client:
             client.close()
-            print("MongoDB connection closed for /api/battle_ids")
-
-# --- This part allows running directly with 'python api_server.py' (optional but convenient) ---
-# Note: For development, running with 'uvicorn api_server:app --reload' is usually preferred.
-if __name__ == "__main__":
-    print("Starting API server using uvicorn...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+            print("MongoDB connection closed for /battle_ids")

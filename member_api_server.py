@@ -27,22 +27,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Create the FastAPI app instance
+app = FastAPI(
+    title="Clan Member Tracking API",
+    version="0.1.0",
+    docs_url=None,
+    redoc_url=None
+)
+
 # --- MongoDB Atlas Connection ---
 MONGO_CONNECTION_STRING = os.environ.get("MONGO_URI")
 DB_NAME = "clan_dashboard_db"
-
-# Create the FastAPI app instance
-app = FastAPI(title="Clan Member Tracking API", version="0.1.0")
-
-# --- CORS Middleware ---
-origins = ["*"]  # Allow all origins for development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- Root endpoint ---
 @app.get("/")
@@ -52,10 +47,10 @@ async def read_root():
     return {"message": "Welcome to the Clan Member Tracking API!"}
 
 # --- Member tracking endpoint ---
-@app.get("/api/member-tracking/{clan_name}")
-async def get_member_tracking(clan_name: str):
+@app.get("/member-tracking/{clan_name}")
+async def get_member_tracking(clan_name: str, battle_id: str):
     """Get the latest member data for a specific clan."""
-    logger.info("Received request for clan: {clan_name}")
+    logger.info(f"Received request for clan: {clan_name}, battle_id: {battle_id}")
     client = None
     try:
         logger.info(f"Connecting to MongoDB for clan: {clan_name}")
@@ -63,9 +58,9 @@ async def get_member_tracking(clan_name: str):
         db = client[DB_NAME]
         members_collection = db["clan_members"]
 
-        # Get the latest record for the clan
+        # Get the latest record for the specific clan and battle
         latest_data = members_collection.find_one(
-            {"clan_name": clan_name},
+            {"clan_name": clan_name, "battle_id": battle_id},
             sort=[("timestamp", pymongo.DESCENDING)]
         )
 
@@ -157,9 +152,9 @@ async def get_member_tracking(clan_name: str):
             client.close()
 
 # --- Member history endpoint ---
-@app.get("/api/member-history/{clan_name}")
-async def get_member_history(clan_name: str, battle_id: Optional[str] = None, userId: Optional[str] = None):
-    """Get historical member data for a specific clan, optionally filtered by battle_id and userId."""
+@app.get("/member-history/{clan_name}")
+async def get_member_history(clan_name: str, battle_id: str, userId: Optional[str] = None):
+    """Get historical member data for a specific clan, filtered by battle_id and optionally by userId."""
     logger.info(f"Received history request - clan: {clan_name}, userId: {userId}, battle_id: {battle_id}")
     client = None
     try:
@@ -253,9 +248,10 @@ async def get_member_history(clan_name: str, battle_id: Optional[str] = None, us
         if client:
             client.close()
 
-@app.get("/api/member-history/{clan_name}/recent")
-async def get_recent_member_history(clan_name: str, hours: int = 24):
-    """Get recent historical data for a clan's members."""
+@app.get("/member-history/{clan_name}/recent")
+async def get_recent_member_history(clan_name: str, battle_id: str, hours: int = 24):
+    """Get recent historical data for a clan's members for a specific battle."""
+    logger.info(f"Starting recent history fetch for clan: {clan_name}, hours: {hours}, battle_id: {battle_id}")
     client = None
     try:
         start_time = time.time()
@@ -360,12 +356,4 @@ async def get_recent_member_history(clan_name: str, hours: int = 24):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if client:
-            client.close()
-
-# Run the server if executed directly
-if __name__ == "__main__":
-    logger.info("="*50)
-    logger.info("Starting Member Tracking API server")
-    logger.info(f"Server will be available at: http://127.0.0.1:8001")
-    logger.info("="*50)
-    uvicorn.run(app, host="127.0.0.1", port=8001) 
+            client.close() 
