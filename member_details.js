@@ -10,7 +10,7 @@ if (!clan || !userId || !battle) {
 }
 
 // Constants
-const API_BASE_URL = 'http://127.0.0.1:8001';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 const LOADING_PLACEHOLDER = '<span class="loading-spinner"></span>';
 
 // --- DOM Elements ---
@@ -766,7 +766,10 @@ function createPointsHistoryChart(memberHistory) {
 // --- Data Fetching Functions ---
 async function fetchMemberData() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/member-tracking/${clan}`);
+        // Include battle_id query so the tracking API doesn't 422
+        const response = await fetch(
+            `${API_BASE_URL}/api/member/member-tracking/${clan}?battle_id=${battle}`
+        );
         if (!response.ok) throw new Error('Failed to fetch member data');
         const data = await response.json();
         return data;
@@ -789,7 +792,7 @@ async function fetchMemberHistory(userId = null) {
         }
         
         const queryString = params.toString();
-        const url = `${API_BASE_URL}/api/member-history/${clan}${queryString ? '?' + queryString : ''}`;
+        const url = `${API_BASE_URL}/api/member/member-history/${clan}${queryString ? '?' + queryString : ''}`;
         console.log('Fetching history with URL:', url);
         
         const response = await fetch(url);
@@ -807,16 +810,27 @@ async function fetchMemberHistory(userId = null) {
     }
 }
 
-// Add function for full history (for rank chart)
 async function fetchFullHistory() {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/member-history/${clan}`);
+        const response = await fetch(
+            `${API_BASE_URL}/api/member/member-history/${clan}?battle_id=${battle}`
+        );
         if (!response.ok) throw new Error('Failed to fetch full history');
         const data = await response.json();
         return data;
     } catch (error) {
         console.error('Error fetching full history:', error);
         return null;
+    }
+}
+
+// Utility to display initialization errors
+function showError(message) {
+    const container = document.querySelector('.page-container');
+    if (container) {
+        container.innerHTML = `<div style="margin:40px; text-align:center; color:red;"><h2>Error</h2><p>${message}</p></div>`;
+    } else {
+        alert(message);
     }
 }
 
