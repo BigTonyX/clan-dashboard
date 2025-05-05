@@ -1,5 +1,5 @@
 // --- Constants ---
-const API_BASE_URL = "http://127.0.0.1:8001"; // Local member API server
+const API_BASE_URL = "http://127.0.0.1:8000"; // Local combined API server
 // const UPDATE_INTERVAL = 120000; // 2 minutes in milliseconds (disabled - no new data)
 const LOADING_PLACEHOLDER = '<span class="loading-spinner"></span>';
 
@@ -104,27 +104,61 @@ function calculatePointGains(memberData, historyData) {
     return pointGains;
 }
 
+// Add a helper to fetch and populate all battle IDs
+async function populateBattleSelector() {
+    try {
+        console.log("Fetching battle IDs for member dashboard...");
+        const response = await fetch(`${API_BASE_URL}/api/clan/api/battle_ids`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const battles = await response.json();
+
+        // Clear existing options
+        battleSelect.innerHTML = '';
+
+        // Load saved battle from localStorage
+        const savedBattle = localStorage.getItem('selectedBattle');
+
+        // Populate dropdown
+        battles.forEach(({ battle_id }) => {
+            const option = document.createElement('option');
+            option.value = battle_id;
+            option.textContent = battle_id;
+            battleSelect.appendChild(option);
+        });
+
+        // Select saved or first battle
+        const defaultBattle = savedBattle && battles.some(b => b.battle_id === savedBattle)
+            ? savedBattle
+            : (battles[0]?.battle_id || '');
+        if (defaultBattle) {
+            battleSelect.value = defaultBattle;
+            currentBattle = defaultBattle;
+            localStorage.setItem('selectedBattle', defaultBattle);
+        }
+    } catch (error) {
+        console.error("Error populating battle selector:", error);
+        battleSelect.innerHTML = '<option value="">Error loading battles</option>';
+    }
+}
+
+// Ensure updateBattleSelect does not clear the full dropdown
 function updateBattleSelect(memberData) {
-    // Clear existing options
-    battleSelect.innerHTML = '';
-    
     if (!memberData?.battle_id) {
         console.error('No battle_id found in member data');
-        battleSelect.innerHTML = '<option value="">No battles available</option>';
         return;
     }
-
-    // Add the current battle from the database
-    const option = document.createElement('option');
-    option.value = memberData.battle_id;
-    option.textContent = `Battle: ${memberData.battle_id}`;
-    battleSelect.appendChild(option);
-    
-    // Set as current battle
-    battleSelect.value = memberData.battle_id;
-    currentBattle = memberData.battle_id;
-    
-    console.log(`Battle selector updated with battle_id: ${memberData.battle_id}`);
+    const id = memberData.battle_id;
+    // Add option if missing
+    if (![...battleSelect.options].some(opt => opt.value === id)) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        battleSelect.appendChild(opt);
+    }
+    // Select current battle
+    battleSelect.value = id;
+    currentBattle = id;
+    console.log(`Battle selector set to battle_id: ${id}`);
 }
 
 // Add battle change handler
@@ -136,17 +170,16 @@ async function handleBattleChange() {
     currentBattle = selectedBattle;
     
     try {
-        // Fetch history data for the selected battle
-        console.log('Fetching history data for selected battle...');
+        // Fetch full history for this battle and use the newest record's members
+        console.log('Fetching battle history to build roster...');
         const historyData = await fetchMemberHistory(currentClan, selectedBattle);
-        if (!historyData) {
-            throw new Error('Failed to fetch history data');
+        if (!historyData?.history?.length) {
+            throw new Error('No history available for this battle');
         }
         cachedHistoryData = historyData;
-        
-        // Filter members for selected battle
-        const battleMembers = cachedMemberData.members.filter(m => m.battle_id === selectedBattle);
-        console.log(`Found ${battleMembers.length} members for battle ${selectedBattle}`);
+        // historyData.history is sorted newest-to-oldest, so take [0]
+        const battleMembers = historyData.history[0].members;
+        console.log(`Loaded ${battleMembers.length} members from history for battle ${selectedBattle}`);
         
         // Clear all uptime caches when battle changes
         uptimeCache = {};
@@ -187,7 +220,7 @@ async function handleBattleChange() {
 async function fetchMemberData(clanName) {
     try {
         console.log(`Fetching member data for clan: ${clanName}`);
-        const response = await fetch(`${API_BASE_URL}/api/member-tracking/${clanName}`);
+        const response = await fetch(`${API_BASE_URL}/api/member/member-tracking/${clanName}?battle_id=${currentBattle}`);
         if (!response.ok) {
             console.error(`HTTP error! status: ${response.status}`);
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -210,7 +243,7 @@ async function fetchRecentHistory(clanName) {
     const startTime = performance.now();
     try {
         console.log(`[Timing] Starting recent history fetch for ${clanName}`);
-        const response = await fetch(`${API_BASE_URL}/api/member-history/${clanName}/recent?hours=24`);
+        const response = await fetch(`${API_BASE_URL}/api/member/member-history/${clanName}/recent?hours=24&battle_id=${currentBattle}`);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -235,7 +268,7 @@ async function fetchRecentHistory(clanName) {
 async function fetchMemberHistory(clanName, battleId = null) {
     try {
         console.log(`Fetching history for clan: ${clanName}` + (battleId ? ` and battle: ${battleId}` : ''));
-        const url = `${API_BASE_URL}/api/member-history/${clanName}` + (battleId ? `?battle_id=${battleId}` : '');
+        const url = `${API_BASE_URL}/api/member/member-history/${clanName}` + (battleId ? `?battle_id=${battleId}` : '');
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -370,7 +403,7 @@ function renderMemberTable(memberData, pointGains = {}) {
         return `
             <tr>
                 <td>${rank}</td>
-                <td><a href="member_details.html?clan=${currentClan}&userId=${member.UserID}&battle=${currentBattle}">${member.username}</a></td>
+                <td><a href="member_details.html?clan=${currentClan}&userId=${member.UserID}&battle=${currentBattle}" target="_blank" rel="noopener noreferrer">${member.username}</a></td>
                 <td class="${pointsClass}">${formatNumber(member.points)}</td>
                 <td class="inactive-time-${member.UserID}">${inactiveTime !== null ? formatInactiveTime(inactiveTime) : LOADING_PLACEHOLDER}</td>
                 <td class="uptime-cell-${member.UserID} ${uptimeClass}">${uptimeValue !== undefined ? formatPercentage(uptimeValue) : LOADING_PLACEHOLDER}</td>
@@ -728,15 +761,18 @@ style.textContent = `
 document.head.appendChild(style);
 
 // Initialize the dashboard when loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Populate battle selector before loading data
+    await populateBattleSelector();
+
     // Set default clan or load saved clan
     const savedClan = loadSavedClan();
     clanSelect.value = savedClan;
     currentClan = savedClan;
-    
-    // Set default points gained period text to match default radio selection (1h)
+
+    // Match default points period display
     pointsGainedPeriodElement.textContent = formatTimePeriod(60);
-    
+
     handleClanChange();
     // Auto-refresh disabled since no new data is coming in
     // setInterval(() => handleClanChange(true), UPDATE_INTERVAL);
@@ -744,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function refreshData() {
     try {
-        const memberData = await fetchMembers();
+        const memberData = await fetchMemberData(currentClan);
         if (!memberData?.battle_id) {
             console.error('No battle_id found in member data');
             return;

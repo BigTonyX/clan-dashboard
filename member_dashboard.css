@@ -59,10 +59,8 @@
 .member-dashboard .control-groups-container {
     display: flex;
     gap: 10px;
-    margin-top: 10px; /* Set consistent 10px gap */
+    margin: 10px auto 10px auto; /* 10px top gap, 20px bottom spacing */
     max-width: 1100px;
-    margin-left: auto;
-    margin-right: auto;
 }
 
 /* Time period selector - align with first 3 stat boxes */
