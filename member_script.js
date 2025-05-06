@@ -1,5 +1,5 @@
 // --- Constants ---
-// const UPDATE_INTERVAL = 120000; // 2 minutes in milliseconds (disabled - no new data)
+const UPDATE_INTERVAL = 120000; // 2 minutes in milliseconds
 const LOADING_PLACEHOLDER = '<span class="loading-spinner"></span>';
 
 // const API_BASE_URL = "http://127.0.0.1:8000"; // Local combined API server
@@ -776,8 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     pointsGainedPeriodElement.textContent = formatTimePeriod(60);
 
     handleClanChange();
-    // Auto-refresh disabled since no new data is coming in
-    // setInterval(() => handleClanChange(true), UPDATE_INTERVAL);
+    setInterval(() => handleClanChange(true), UPDATE_INTERVAL);
 });
 
 async function refreshData() {
