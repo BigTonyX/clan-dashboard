@@ -776,7 +776,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     pointsGainedPeriodElement.textContent = formatTimePeriod(60);
 
     handleClanChange();
-    setInterval(() => handleClanChange(true), UPDATE_INTERVAL);
+    // Auto-refresh: use only the 24h history for lightweight updates
+    setInterval(async () => {
+        if (!currentClan || !cachedMemberData) return;
+        try {
+            const recentHistoryData = await fetchRecentHistory(currentClan);
+            if (!recentHistoryData?.history?.length) return;
+            cachedHistoryData = recentHistoryData;
+            const battleMembers = cachedMemberData.members.filter(m => m.battle_id === currentBattle);
+            const pointGains = calculatePointGains({ ...cachedMemberData, members: battleMembers }, recentHistoryData);
+            renderMemberTable({ ...cachedMemberData, members: battleMembers }, pointGains);
+            const stats = calculateStats({ ...cachedMemberData, members: battleMembers }, recentHistoryData, selectedUptimeWindow);
+            updateStatsDisplay(stats);
+            lastUpdatedElement.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        } catch (error) {
+            console.error('Error during recent-history auto-refresh:', error);
+        }
+    }, UPDATE_INTERVAL);
 });
 
 async function refreshData() {
