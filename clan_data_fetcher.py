@@ -356,6 +356,111 @@ def insert_clan_data(clan_list, client, battle_id):
     print(f"Processed {processed_count} clans. Successful inserts into 'clans': {inserted_count}. Attempted upserts into 'clan_details': {details_processed_count}.")
     return inserted_count
 
+def create_leaderboard_snapshot(client, battle_id):
+    """
+    Creates a snapshot of the top 25 clans for the current battle and saves it to leaderboard_snapshots,
+    including pre-calculated gains for each period.
+    """
+    db = client[DB_NAME]
+    clans_collection = db["clans"]
+    snapshots_collection = db["leaderboard_snapshots"]
+
+    # Gain periods in minutes
+    gain_periods = [30, 60, 180, 360, 720, 1080, 1440]
+    now_doc = clans_collection.find_one(
+        {"battle_id": battle_id},
+        sort=[("timestamp", pymongo.DESCENDING)]
+    )
+    if not now_doc or "timestamp" not in now_doc:
+        print("No latest document found for snapshot.")
+        return
+
+    latest_ts = now_doc["timestamp"]
+
+    # Get the top 25 clans at this timestamp
+    top_clans_cursor = clans_collection.find(
+        {"battle_id": battle_id, "timestamp": latest_ts}
+    ).sort("current_points", pymongo.DESCENDING).limit(25)
+
+    top_clans = []
+    rank = 1
+    for doc in top_clans_cursor:
+        clan_name = doc.get("clan_name")
+        current_points = doc.get("current_points")
+        members = doc.get("members")
+        gains = {}
+
+        # For each period, find the points X minutes ago and calculate gain
+        for period in gain_periods:
+            past_time = latest_ts - datetime.timedelta(minutes=period)
+            past_doc = clans_collection.find_one(
+                {
+                    "battle_id": battle_id,
+                    "clan_name": clan_name,
+                    "timestamp": {"$lte": past_time}
+                },
+                sort=[("timestamp", pymongo.DESCENDING)]
+            )
+            if past_doc and "current_points" in past_doc:
+                gain = current_points - past_doc["current_points"]
+            else:
+                gain = None  # Not enough history
+            gains[f"gain_{period}m"] = gain
+
+        # Add any fields you want to keep in the snapshot
+        clan_snapshot = {
+            "clan_name": clan_name,
+            "current_points": current_points,
+            "current_rank": rank,
+            "members": members,
+        }
+        clan_snapshot.update(gains)
+        top_clans.append(clan_snapshot)
+        rank += 1
+
+     # Get war end time
+    war_end_time = get_war_finish_time()
+    if not war_end_time:
+        print("Could not get war end time for forecast calculation.")
+        return
+
+    # Calculate minutes remaining
+    now = latest_ts.replace(tzinfo=None) if latest_ts.tzinfo else latest_ts
+    minutes_remaining = (war_end_time - now).total_seconds() / 60
+    if minutes_remaining < 0:
+        minutes_remaining = 0
+
+    # Use a default period for forecast (e.g., 360 minutes = 6h)
+    forecast_period = 360
+    forecast_field = f"gain_{forecast_period}m"
+
+    # Calculate projected points for each clan
+    for clan in top_clans:
+        gain = clan.get(forecast_field)
+        if gain is not None and minutes_remaining > 0:
+            gain_rate_per_minute = gain / forecast_period
+            projected_points = clan["current_points"] + gain_rate_per_minute * minutes_remaining
+        else:
+            projected_points = clan["current_points"]
+        clan["projected_points"] = projected_points
+
+    # Assign forecast rank based on projected points
+    sorted_clans = sorted(top_clans, key=lambda c: c["projected_points"], reverse=True)
+    for idx, clan in enumerate(sorted_clans, 1):
+        clan["forecast_rank"] = idx   
+    # Save the snapshot
+    snapshot_doc = {
+        "battle_id": battle_id,
+        "timestamp": latest_ts,
+        "top_clans": top_clans
+    }
+    snapshots_collection.replace_one(
+        {"battle_id": battle_id, "timestamp": latest_ts},
+        snapshot_doc,
+        upsert=True
+    )
+    print(f"Leaderboard snapshot saved for battle {battle_id} at {latest_ts}")
+
 # --- Main Execution ---
 def main(mongo_client=None, is_running=None):
     """Main execution function for the clan data fetcher."""
@@ -390,6 +495,7 @@ def main(mongo_client=None, is_running=None):
                     should_collect, battle_id = should_collect_clan_data(mongo_client, clans)
                     if should_collect and battle_id:
                         insert_clan_data(clans, mongo_client, battle_id)
+                        create_leaderboard_snapshot(mongo_client, battle_id)
                     else:
                         logger.info("Skipping data collection this cycle")
                 else:
