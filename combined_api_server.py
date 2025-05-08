@@ -4,6 +4,7 @@ from api_server import app as clan_app
 from member_api_server import app as member_app
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 
 # Create the main FastAPI app
 app = FastAPI(
@@ -29,11 +30,7 @@ limiter = Limiter(
 )
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
-
-@app.middleware("http")
-async def add_rate_limit(request, call_next):
-    response = await limiter(request, call_next)
-    return response
+app.add_middleware(SlowAPIMiddleware)
 
 # Mount the clan API sub-application
 app.mount("/api/clan", clan_app)
