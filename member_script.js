@@ -110,7 +110,7 @@ function calculatePointGains(memberData, historyData) {
 async function populateBattleSelector() {
     try {
         console.log("Fetching battle IDs for member dashboard...");
-        const response = await fetch(`${API_BASE_URL}/api/clan/battle_ids`);
+        const response = await fetch(`${API_BASE_URL}/api/clan/api/battle_ids`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const battles = await response.json();
 
