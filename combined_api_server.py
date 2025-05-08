@@ -22,8 +22,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add global rate limiting: 60 requests per minute per IP
-limiter = Limiter(key_func=get_remote_address)
+# Add global rate limiting: 30 requests per minute per IP
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["30/minute"]
+)
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
