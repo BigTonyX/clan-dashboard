@@ -11,10 +11,10 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Add CORS middleware to the main app
+# Add CORS middleware to only allow GitHub Pages frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://bigtonyx.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
