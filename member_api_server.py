@@ -50,7 +50,7 @@ async def read_root():
 @app.get("/member-tracking/{clan_name}")
 async def get_member_tracking(clan_name: str, battle_id: str):
     """Get the latest member data for a specific clan."""
-    logger.info(f"Received request for clan: {clan_name}, battle_id: {battle_id}")
+    logger.info(f"Received request for clan_name: {clan_name}, battle_id: {battle_id}")
     client = None
     try:
         logger.info(f"Connecting to MongoDB for clan: {clan_name}")
@@ -169,21 +169,43 @@ async def get_member_history(clan_name: str, battle_id: str, userId: Optional[st
 
         # If userId is provided, use aggregation pipeline to filter at database level
         if userId:
-            # First try to match records that contain this user
-            query["members"] = {
-                "$elemMatch": {
-                    "UserID": {
-                        "$in": [userId, int(userId)]  # Match both string and int versions
+            pipeline = [
+                {"$match": {
+                    "clan_name": clan_name,
+                    "battle_id": battle_id
+                }},
+                {"$project": {
+                    "timestamp": 1,
+                    "total_points": 1,
+                    "is_active": 1,
+                    "battle_id": 1,
+                    "members": {
+                        "$filter": {
+                            "input": "$members",
+                            "as": "member",
+                            "cond": {
+                                "$or": [
+                                    {"$eq": ["$$member.UserID", userId]},
+                                    {"$eq": ["$$member.UserID", int(userId)]}
+                                ]
+                            }
+                        }
                     }
-                }
-            }
-            logger.info(f"Using query with userId filter: {userId}")
+                }},
+                {"$match": {
+                    "members": {"$ne": []}
+                }},
+                {"$sort": {"timestamp": -1}}
+            ]
+            historical_data = list(members_collection.aggregate(pipeline))
+            logger.info(f"Using aggregation pipeline with userId filter: {userId}")
+        else:
+            # Get historical data with the basic query for all members
+            historical_data = list(members_collection.find(
+                query,
+                sort=[("timestamp", pymongo.DESCENDING)]
+            ))
 
-        # Get historical data with the query
-        historical_data = list(members_collection.find(
-            query,
-            sort=[("timestamp", pymongo.DESCENDING)]
-        ))
         logger.info(f"Found {len(historical_data)} historical records for {clan_name}")
 
         if not historical_data:
@@ -215,6 +237,10 @@ async def get_member_history(clan_name: str, battle_id: str, userId: Optional[st
                     continue
                     
                 user_id = str(member["UserID"])
+                # Only include the requested user's data when userId is provided
+                if userId and user_id != userId and user_id != str(int(userId)):
+                    continue
+                    
                 user_info = usernames.get(user_id, {"name": "Unknown", "display_name": "Unknown"})
                 
                 members_with_names.append({
@@ -323,6 +349,10 @@ async def get_recent_member_history(clan_name: str, battle_id: str, hours: int =
                     continue
                     
                 user_id = str(member["UserID"])
+                # Only include the requested user's data when userId is provided
+                if userId and user_id != userId and user_id != str(int(userId)):
+                    continue
+                    
                 user_info = usernames.get(user_id, {"name": "Unknown", "display_name": "Unknown"})
                 
                 members_with_names.append({
