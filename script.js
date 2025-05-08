@@ -966,6 +966,10 @@ async function initializeApp() {
     setInterval(fetchDashboardData, 120000);
 
     fetchReachTargetData(true); // Fetch initial reach target data, suppress placeholder
+
+    if (updateComparisonBtn) {
+        updateComparisonBtn.addEventListener('click', updateComparisonChart);
+    }
 }
 
 if (document.readyState === 'loading') {
