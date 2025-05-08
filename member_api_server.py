@@ -304,6 +304,7 @@ async def get_recent_member_history(clan_name: str, battle_id: str, hours: int =
         records = list(collection.find(
             {
                 "clan_name": clan_name,
+                "battle_id": battle_id,
                 "timestamp": {"$gte": cutoff_time}
             },
             sort=[("timestamp", pymongo.DESCENDING)]  # Sort by newest first
@@ -315,7 +316,10 @@ async def get_recent_member_history(clan_name: str, battle_id: str, hours: int =
             logger.warning(f"No recent records found. Fetching last 100 records instead.")
             # If no recent records, get the last 100 records
             records = list(collection.find(
-                {"clan_name": clan_name},
+                {
+                    "clan_name": clan_name,
+                    "battle_id": battle_id
+                },
                 sort=[("timestamp", pymongo.DESCENDING)],
                 limit=100
             ))
