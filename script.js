@@ -57,7 +57,7 @@ async function populateBattleSelector() {
 
     try {
         console.log("Fetching battle IDs...");
-        const response = await fetch(`${API_BASE_URL}/api/battle_ids`);
+        const response = await fetch(`${API_BASE_URL}/battle_ids`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const battles = await response.json();
         
