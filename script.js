@@ -74,7 +74,7 @@ async function populateBattleSelector() {
             option.value = battle.battle_id;
             option.textContent = battle.battle_id;
             battleSelect.appendChild(option);
-        });
+        });s
 
         // Try to use stored battle ID if it exists in the options
         if (storedBattleId && Array.from(battleSelect.options).some(opt => opt.value === storedBattleId)) {
