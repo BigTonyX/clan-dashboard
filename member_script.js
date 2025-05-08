@@ -163,62 +163,6 @@ function updateBattleSelect(memberData) {
     console.log(`Battle selector set to battle_id: ${id}`);
 }
 
-// Add CSS for loading overlay
-const loadingOverlayStyle = document.createElement('style');
-loadingOverlayStyle.textContent = `
-.loading-spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    vertical-align: middle;
-}
-
-.loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s, visibility 0.3s;
-}
-
-.loading-overlay.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-.loading-content {
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-.loading-content .loading-spinner {
-    width: 40px;
-    height: 40px;
-    margin-bottom: 10px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-`;
-document.head.appendChild(loadingOverlayStyle);
-
 // Add loading overlay HTML
 const loadingOverlay = document.createElement('div');
 loadingOverlay.className = 'loading-overlay';
@@ -816,27 +760,6 @@ uptimeWindowInputs.forEach(input => {
         }
     });
 });
-
-// Add CSS for loading spinner
-const style = document.createElement('style');
-style.textContent = `
-.loading-spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    vertical-align: middle;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-`;
-document.head.appendChild(style);
 
 // Initialize the dashboard when loaded
 document.addEventListener('DOMContentLoaded', async () => {
