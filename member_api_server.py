@@ -349,10 +349,6 @@ async def get_recent_member_history(clan_name: str, battle_id: str, hours: int =
                     continue
                     
                 user_id = str(member["UserID"])
-                # Only include the requested user's data when userId is provided
-                if userId and user_id != userId and user_id != str(int(userId)):
-                    continue
-                    
                 user_info = usernames.get(user_id, {"name": "Unknown", "display_name": "Unknown"})
                 
                 members_with_names.append({
