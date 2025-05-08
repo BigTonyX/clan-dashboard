@@ -389,7 +389,7 @@ async def get_clan_comparison(
     return comparison_data
 
 # New endpoint to fetch battle IDs
-@app.get("/battle_ids")
+@app.get("/api/battle_ids")
 async def get_battle_ids():
     """Fetches all battle IDs from the battle_id_history collection, sorted by timestamp."""
     try:

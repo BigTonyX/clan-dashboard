@@ -57,7 +57,7 @@ async function populateBattleSelector() {
 
     try {
         console.log("Fetching battle IDs...");
-        const response = await fetch(`${API_BASE_URL}/battle_ids`);
+        const response = await fetch(`${API_BASE_URL}/api/battle_ids`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const battles = await response.json();
         
@@ -74,7 +74,7 @@ async function populateBattleSelector() {
             option.value = battle.battle_id;
             option.textContent = battle.battle_id;
             battleSelect.appendChild(option);
-        });s
+        });
 
         // Try to use stored battle ID if it exists in the options
         if (storedBattleId && Array.from(battleSelect.options).some(opt => opt.value === storedBattleId)) {
