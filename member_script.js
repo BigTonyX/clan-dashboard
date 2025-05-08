@@ -163,6 +163,78 @@ function updateBattleSelect(memberData) {
     console.log(`Battle selector set to battle_id: ${id}`);
 }
 
+// Add CSS for loading overlay
+const style = document.createElement('style');
+style.textContent = `
+.loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    vertical-align: middle;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.loading-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.loading-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.loading-content .loading-spinner {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+`;
+document.head.appendChild(style);
+
+// Add loading overlay HTML
+const loadingOverlay = document.createElement('div');
+loadingOverlay.className = 'loading-overlay';
+loadingOverlay.innerHTML = `
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div>Loading battle data...</div>
+    </div>
+`;
+document.body.appendChild(loadingOverlay);
+
+// Function to show/hide loading overlay
+function setLoading(show) {
+    loadingOverlay.classList.toggle('active', show);
+}
+
 // Add battle change handler
 async function handleBattleChange() {
     const selectedBattle = battleSelect.value;
@@ -172,6 +244,8 @@ async function handleBattleChange() {
     currentBattle = selectedBattle;
     
     try {
+        setLoading(true);  // Show loading overlay
+        
         // Fetch full history for this battle and use the newest record's members
         console.log('Fetching battle history to build roster...');
         const historyData = await fetchMemberHistory(currentClan, selectedBattle);
@@ -215,6 +289,8 @@ async function handleBattleChange() {
         console.error('Error in handleBattleChange:', error);
         console.error('Stack trace:', error.stack);
         memberTableBody.innerHTML = `<tr><td colspan="5" class="text-center">Error loading battle data: ${error.message}</td></tr>`;
+    } finally {
+        setLoading(false);  // Hide loading overlay
     }
 }
 
