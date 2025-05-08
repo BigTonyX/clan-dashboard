@@ -87,15 +87,16 @@ h1 + .subheader + h2 {
 
 /* Header/Status Bar */
 header#status-bar {
-    background-color: var(--surface-color);
-    padding: 8px 20px;
-    border-radius: var(--border-radius);
+    background-color: transparent;
+    border-radius: 0;
+    padding: 8px 0;
     margin-top: 0;
-    margin-bottom: 15px; /* Increased margin */
+    margin-bottom: 15px;
     text-align: center;
     font-size: 1em;
-    /* Removed max-width and centering - let it fill container or align left */
 }
+
+
 #countdown-timer { font-weight: bold; color: var(--primary-color); }
 #last-updated { color: var(--text-muted-color); font-size: 0.9em; margin-left: 10px;}
 
@@ -128,24 +129,46 @@ main#leaderboard-area {
 
 /* Controls Area - Heading outside flex/grid */
 #controls-area {
-    background-color: var(--bg-color);
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: var(--z-index-dropdown);
+    /* Fit to content: auto width, but not too small or too large */
+    width: auto;
+    min-width: 650px;
+    max-width: 90vw;
+    background-color: #1e1e1e;
     padding: var(--spacing-lg);
     border-radius: var(--border-radius);
-    margin-bottom: var(--spacing-xl);
-    overflow: visible !important;
-    transition: all var(--transition-normal);
 }
-  
-#controls-area.collapsed {
-    padding-top: 0;
-    padding-bottom: 0;
-    padding-left: 10px;
-    padding-right: 10px;
+#controls-area.modal-visible {
+    display: block;
+}
+#controls-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.4);
+    z-index: calc(var(--z-index-dropdown) - 1);
+}
+#controls-overlay.modal-visible {
+    display: block;
+}
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-lg);
 }
   
 #controls-area > h2 {
     margin-top: 8px;
-    padding-bottom: 10px;
+    padding-bottom: var(--spacing-sm);
     cursor: pointer;
     display: flex;
     justify-content: space-between;
@@ -166,19 +189,13 @@ main#leaderboard-area {
 }
   
 #controls-area > h2::after {
-    content: '\25BE';
-    font-size: 1.2em;
-    transition: transform 0.3s ease-in-out;
-}
-  
-#controls-area.collapsed > h2::after {
-    transform: rotate(-90deg);
+    content: none;
 }
   
 .controls-grid {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: var(--spacing-md);
 }
   
 #controls-area.collapsed .controls-grid {
@@ -256,7 +273,7 @@ main#leaderboard-area {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 15px 20px;
-    margin: 25px 0; /* Vertical margin only, align left */
+    margin: 5px 0; /* Vertical margin only, align left */
     text-align: center;
     font-size: 1.1em;
 }
@@ -270,6 +287,7 @@ main#leaderboard-area {
     border-collapse: collapse;
     font-size: var(--font-size-sm);
     box-shadow: var(--box-shadow);
+    margin-top: -5px
 }
 
 #leaderboard-table th,
@@ -303,6 +321,16 @@ main#leaderboard-area {
 
 #leaderboard-table tbody tr:hover { 
     background-color: var(--table-hover-bg); 
+}
+
+.ttc-green {
+    color: #28a745; /* Bootstrap green */
+    font-weight: bold;
+}
+
+.ttc-grey {
+    color: #888;    /* Muted grey */
+    font-weight: normal;
 }
 
 /* Highlight Style */
@@ -593,7 +621,36 @@ input[type="number"] {
     .clan-option-pill {
       flex-grow: 1;
     }
+}
+
+/* Fullscreen modal on smaller screens */
+@media screen and (max-width: 900px) {
+  #controls-area.modal-visible {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    min-width: 0 !important;
+    max-width: 100vw !important;
+    border-radius: 0 !important;
+    padding: var(--spacing-lg) !important;
+    overflow-y: auto !important;
   }
+  /* Stack grid rows vertically and stretch to full width */
+  #controls-area.modal-visible .controls-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  /* Allow radio groups in modal to wrap on smaller screens */
+  #controls-area.modal-visible .controls-row.radio-row .radio-group {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+    gap: var(--spacing-sm) var(--spacing-md);
+  }
+}
 
 .clan-icon {
     border-radius: 50%;
@@ -682,9 +739,8 @@ input[type="number"] {
 
 .custom-rank-dropdown {
     position: relative;
-    width: 80px;
+    width: auto;
     min-width: 0;
-    max-width: 100px;
     margin-bottom: 10px;
     font-size: 1em;
     display: inline-block;
@@ -966,9 +1022,13 @@ input[type="number"] {
 /* Leaderboard header on index page */
 .leaderboard-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: 0px; 
+}
+.leaderboard-header .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--spacing-sm);
 }
 .leaderboard-header h2 {
     margin: 0;
@@ -986,4 +1046,71 @@ input[type="number"] {
 .member-dashboard-btn:hover {
     background-color: var(--highlight-color);
 }
+
+/* --- Override for modal dropdown sizing --- */
+#controls-area.modal-visible .controls-row.dropdown-row > .tracked-clan-dropdown,
+#controls-area.modal-visible .controls-row.dropdown-row > .target-rank-dropdown {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+}
+
+/* --- Ensure radio groups in modal stay on one line --- */
+#controls-area.modal-visible .controls-row.radio-row .radio-group {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* Ensure select and number inputs in modal have same height */
+#controls-area.modal-visible .tracked-clan-dropdown select,
+#controls-area.modal-visible .target-rank-dropdown input[type="number"] {
+    height: calc(var(--spacing-lg) * 2);
+    box-sizing: border-box;
+}
+
+/* Match custom clan dropdown height to select/input in modal */
+#controls-area.modal-visible .custom-clan-selected {
+    height: calc(var(--spacing-lg) * 2);
+    padding: 0 var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+/* Responsive adjustments for header actions on small screens */
+@media screen and (max-width: 600px) {
+  .leaderboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .leaderboard-header h2 {
+    width: 100%;
+    text-align: center;
+  }
+  .leaderboard-header .header-actions {
+    margin-left: 0;
+    margin-top: var(--spacing-md);
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+  .leaderboard-header .header-actions > * {
+    flex: 1 1 48%; /* two columns */
+    max-width: 48%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+.gain-higher-than-tracked {
+    color: #dc3545; /* Bootstrap red */
+    font-weight: bold;
+}
+
 

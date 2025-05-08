@@ -36,9 +36,15 @@ let selectedComparisonClans = []; // Array to hold selected clan names
 let currentComparisonTimePeriod = 60; // Default comparison period
 let controlsExpanded = true; // Initial state of controls
 let clanList = []; // Global clan list for dropdown and other uses
+let battleList = []; // store fetched battles for custom dropdown
+let pendingBattleId = null;
+let pendingTargetClan = null;
+let pendingTargetRank = null;
+let lastDashboardData = null; // Store the last loaded dashboard data
+let nextRefreshTime = null; // Track when the next refresh will occur
 
 // --- API Base URL ---
-// const API_BASE_URL = "http://127.0.0.1:8000/api/clan"; // Local server for testing with correct path prefix
+//const API_BASE_URL = "http://127.0.0.1:8000pi/clan"; // Local server for testing with correct path prefix
 const API_BASE_URL = "https://clan-dashboard-api.onrender.com/api/clan"; // Production Render server
 
 // --- Battle Selector Population ---
@@ -55,6 +61,7 @@ async function populateBattleSelector() {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const battles = await response.json();
         
+        battleList = battles; // save for custom dropdown
         // Clear existing options
         battleSelect.innerHTML = '';
         
@@ -80,17 +87,70 @@ async function populateBattleSelector() {
         }
 
         console.log(`Populated battle selector with ${battles.length} battles. Current battle: ${currentBattleId}`);
+
+        if (currentBattleId) {
+            localStorage.setItem('selectedBattleId', currentBattleId);
+        }
+
+        // Build custom dropdown for battles
+        renderCustomBattleDropdown(battles);
     } catch (error) {
         console.error("Error populating battle selector:", error);
         battleSelect.innerHTML = '<option value="">Error loading battles</option>';
     }
 }
 
+// --- Custom Battle Dropdown ---
+function renderCustomBattleDropdown(battles) {
+    const dropdown = document.getElementById('custom-battle-dropdown');
+    if (!dropdown) {
+        console.error('custom-battle-dropdown not found');
+        return;
+    }
+    dropdown.innerHTML = '';
+    // Use pendingBattleId if set, otherwise currentBattleId
+    const selectedBattleId = pendingBattleId || currentBattleId;
+    const selected = document.createElement('div');
+    selected.className = 'custom-clan-selected';
+    selected.innerHTML = `<span>${selectedBattleId || ''}</span><span class="dropdown-arrow">&#9662;</span>`;
+    dropdown.appendChild(selected);
+    // List
+    const list = document.createElement('ul');
+    list.className = 'clan-dropdown-list';
+    battles.forEach(({ battle_id }) => {
+        const item = document.createElement('li');
+        item.className = 'clan-dropdown-item';
+        item.textContent = battle_id;
+        if (battle_id === selectedBattleId) {
+            item.classList.add('selected');
+        }
+        item.onclick = () => {
+            pendingBattleId = battle_id;
+            renderCustomBattleDropdown(battles);
+        };
+        list.appendChild(item);
+    });
+    dropdown.appendChild(list);
+    // Toggle list
+    selected.onclick = (e) => {
+        e.stopPropagation();
+        list.classList.toggle('show');
+    };
+    document.addEventListener('click', () => list.classList.remove('show'));
+    // Match list width
+    setTimeout(() => {
+        const w = selected.offsetWidth;
+        list.style.width = w + 'px';
+        list.style.minWidth = w + 'px';
+        list.style.boxSizing = 'border-box';
+    }, 0);
+}
+
 // --- Fetch Countdown Data ---
 async function fetchCountdown() {
     // console.log("Fetching countdown..."); // Reduce logging
     try {
-        const response = await fetch(`${API_BASE_URL}/api/countdown`);
+        const response = await fetch(`${API_BASE_URL}/countdown`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         countdownTimerElement.textContent = (data && data.countdown) ? data.countdown : "N/A";
@@ -195,17 +255,17 @@ function formatTimePeriodHeader(minutes) {
         return `Gain (${hours}h)`;
     }
 }
-// --- ** END NEW Helper ** ---
-
 
 // --- Fetch and Display "Reach Target" Data ---
-async function fetchReachTargetData() {
+async function fetchReachTargetData(suppressPlaceholder = false) {
     if (!currentTargetClan) {
-        reachTargetDisplay.innerHTML = '<p>Select a Clan to Track in Controls</p>';
+        if (!suppressPlaceholder) {
+            reachTargetDisplay.innerHTML = '<p>Select a Clan to Track in Controls</p>';
+        }
         return;
     }
-    console.log(`Fetching reach target data for ${currentTargetClan} to rank ${currentTargetRank} (forecast period ${currentForecastPeriod}m)...`);
     reachTargetDisplay.innerHTML = '<p>Calculating...</p>';
+    console.log(`Fetching reach target data for ${currentTargetClan} to rank ${currentTargetRank} (forecast period ${currentForecastPeriod}m)...`);
 
     const url = `${API_BASE_URL}/clan_reach_target?clan_name=${encodeURIComponent(currentTargetClan)}&target_rank=${currentTargetRank}&forecast_period=${currentForecastPeriod}&battle_id=${encodeURIComponent(currentBattleId)}`;
 
@@ -231,7 +291,7 @@ async function fetchReachTargetData() {
              } else if (points === null) { resultText = `Ineligible (needs >6hrs data)`; }
              else if (points === 0) { resultText = `Already projected >= rank ${currentTargetRank}!`; }
              else if (points === "Infinity") { resultText = `Needs infinite points/hr`; }
-             else { resultText = `Needs **${formatNumber(points)}** extra pts/hr for rank ${currentTargetRank}`; }
+             else { resultText = `Needs *${formatNumber(points)}* extra pts/hr for rank ${currentTargetRank}`; }
         }
          reachTargetDisplay.innerHTML = `<p><strong>${currentTargetClan}</strong>: ${resultText}</p>`;
 
@@ -244,164 +304,197 @@ async function fetchReachTargetData() {
 
 // --- Fetch Dashboard Data (and update controls/highlighting) ---
 async function fetchDashboardData() {
-    console.log(`Fetching dashboard data with timePeriod=${currentTimePeriod}, forecastPeriod=${currentForecastPeriod}...`);
-    const url = `${API_BASE_URL}/dashboard?time_period=${currentTimePeriod}&forecast_period=${currentForecastPeriod}&battle_id=${encodeURIComponent(currentBattleId)}`;
+    console.log(`Fetching dashboard data (snapshot) for battle_id=${currentBattleId}...`);
+    const url = `${API_BASE_URL}/dashboard?battle_id=${encodeURIComponent(currentBattleId)}`;
     leaderboardBody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>'; // Show loading state
-  
+
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        // Attempt to parse error detail from response if not ok
-        let errorDetail = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorDetail += ` - ${JSON.stringify(errorData.detail || errorData)}`; // Use .detail if available
-        } catch (jsonError) { /* Ignore if response wasn't JSON */ }
-        throw new Error(errorDetail);
-      }
-      clanList = await response.json();
-      console.log("Dashboard data received (first few):", clanList.slice(0, 3));
-  
-      leaderboardBody.innerHTML = ''; // Clear loading/previous rows
-  
-      if (clanList && Array.isArray(clanList) && clanList.length > 0) {
-        // --- Populate Target Clan Dropdown (Existing logic) ---
-        const previousSelectedClan = targetClanSelect.value;
-        targetClanSelect.innerHTML = '<option value="">-- Select Clan --</option>'; // Clear and add default
-        clanList.forEach(clan => {
-          const option = document.createElement('option');
-          option.value = clan.clan_name; option.textContent = clan.clan_name;
-          if (clan.clan_name === previousSelectedClan) {
-            option.selected = true;
-          }
-          targetClanSelect.appendChild(option);
-        });
-        const savedClan = localStorage.getItem('selectedClan');
-        let validSavedClan = savedClan && Array.from(targetClanSelect.options).some(opt => opt.value === savedClan);
+        const response = await fetch(url);
+        if (!response.ok) {
+            let errorDetail = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorDetail += ` - ${JSON.stringify(errorData.detail || errorData)}`;
+            } catch (jsonError) { /* Ignore if response wasn't JSON */ }
+            throw new Error(errorDetail);
+        }
+        const topClans = await response.json();
+        lastDashboardData = topClans; // Cache the data for re-rendering
+        console.log("Snapshot data received (first few):", topClans.slice(0, 3));
 
-        if (validSavedClan) {
-            targetClanSelect.value = savedClan;
-            currentTargetClan = savedClan;
-            fetchReachTargetData();
-        } else if (!previousSelectedClan) {
-            // Only set default on very first load
-            const nongOption = Array.from(targetClanSelect.options).find(opt => opt.value === "NONG");
-            if (nongOption) {
-                targetClanSelect.value = "NONG";
-                currentTargetClan = "NONG";
-                localStorage.setItem('selectedClan', "NONG");
-                fetchReachTargetData();
-            } else if (targetClanSelect.options.length > 1) {
-                // Use the first available clan (not the placeholder)
-                targetClanSelect.selectedIndex = 1;
-                currentTargetClan = targetClanSelect.value;
-                localStorage.setItem('selectedClan', currentTargetClan);
+        // Set next refresh time
+        nextRefreshTime = new Date(Date.now() + 120000); // 2 minutes from now
+        const currentTime = new Date().toLocaleTimeString();
+        lastUpdatedElement.setAttribute('data-last-updated', currentTime);
+        updateRefreshCountdown();
+
+        if (topClans && Array.isArray(topClans) && topClans.length > 0) {
+            // Update global clanList with the latest snapshot data
+            clanList = topClans;
+            // --- Populate Target Clan Dropdown (Existing logic) ---
+            const previousSelectedClan = targetClanSelect.value;
+            let wasUnset = !currentTargetClan;
+            targetClanSelect.innerHTML = '<option value="">-- Select Clan --</option>';
+            topClans.forEach(clan => {
+                const option = document.createElement('option');
+                option.value = clan.clan_name; option.textContent = clan.clan_name;
+                if (clan.clan_name === previousSelectedClan) {
+                    option.selected = true;
+                }
+                targetClanSelect.appendChild(option);
+            });
+            const savedClan = localStorage.getItem('selectedClan');
+            let validSavedClan = savedClan && Array.from(targetClanSelect.options).some(opt => opt.value === savedClan);
+
+            if (validSavedClan) {
+                targetClanSelect.value = savedClan;
+                currentTargetClan = savedClan;
+            } else if (!previousSelectedClan) {
+                const nongOption = Array.from(targetClanSelect.options).find(opt => opt.value === "NONG");
+                if (nongOption) {
+                    targetClanSelect.value = "NONG";
+                    currentTargetClan = "NONG";
+                    localStorage.setItem('selectedClan', "NONG");
+                } else if (targetClanSelect.options.length > 1) {
+                    targetClanSelect.selectedIndex = 1;
+                    currentTargetClan = targetClanSelect.value;
+                    localStorage.setItem('selectedClan', currentTargetClan);
+                }
+            } else {
+                targetClanSelect.value = previousSelectedClan;
+                currentTargetClan = previousSelectedClan;
+            }
+            // --- End Dropdown Population ---
+
+            // --- Populate All Clan Pills ---
+            if (allClanPillsContainer) {
+                allClanPillsContainer.innerHTML = '';
+                topClans.forEach(clan => {
+                    const pill = document.createElement('span');
+                    pill.classList.add('clan-option-pill');
+                    pill.textContent = clan.clan_name;
+                    pill.dataset.clanName = clan.clan_name;
+                    pill.addEventListener('click', handleClanPillClick);
+                    if (selectedComparisonClans.includes(clan.clan_name)) {
+                        pill.classList.add('selected');
+                    }
+                    allClanPillsContainer.appendChild(pill);
+                });
+            } else {
+                console.error("All clan pills container not found!");
+            }
+            // --- End Populate All Clan Pills ---
+
+            // --- Populate table rows (Snapshot logic) ---
+            let trackedClanGain = null;
+            if (topClans && Array.isArray(topClans)) {
+                const trackedClan = topClans.find(clan => clan.clan_name === currentTargetClan);
+                if (trackedClan) {
+                    const gainField = `gain_${currentTimePeriod}m`;
+                    trackedClanGain = trackedClan[gainField];
+                }
+            }
+
+            // Update the gain header to reflect the selected period
+            updateGainHeader(currentTimePeriod);
+
+            // --- Calculate gap and time to catch for each clan ---
+            const gainField = `gain_${currentTimePeriod}m`;
+            const forecastGainField = `gain_${currentForecastPeriod}m`;
+            for (let i = 0; i < topClans.length; i++) {
+                const clan = topClans[i];
+                let gap = '';
+                let timeToCatch = '';
+                if (i > 0) {
+                    // Calculate gap to the clan above
+                    const aboveClan = topClans[i - 1];
+                    if (aboveClan && typeof aboveClan.current_points === 'number' && typeof clan.current_points === 'number') {
+                        gap = aboveClan.current_points - clan.current_points;
+                        if (gap < 0) gap = 0;
+                    }
+                    // Calculate time to catch using forecast period gains
+                    const currentForecastGain = clan[forecastGainField];
+                    const aboveForecastGain = aboveClan[forecastGainField];
+                    if (
+                        typeof currentForecastGain === 'number' &&
+                        typeof aboveForecastGain === 'number' &&
+                        currentForecastGain > aboveForecastGain &&
+                        gap > 0 &&
+                        currentForecastPeriod > 0
+                    ) {
+                        const gainDifference = currentForecastGain - aboveForecastGain;
+                        const minutesToCatch = (gap * currentForecastPeriod) / gainDifference;
+                        if (isFinite(minutesToCatch) && minutesToCatch > 0) {
+                            // Format as days/hours/minutes if over 24h
+                            const days = Math.floor(minutesToCatch / 1440);
+                            const hours = Math.floor((minutesToCatch % 1440) / 60);
+                            const minutes = Math.round(minutesToCatch % 60);
+                            if (days > 0) {
+                                let str = `${days}d`;
+                                if (hours > 0) str += ` ${hours}h`;
+                                if (minutes > 0) str += ` ${minutes}m`;
+                                timeToCatch = str;
+                            } else if (hours > 0 && minutes > 0) {
+                                timeToCatch = `${hours}h ${minutes}m`;
+                            } else if (hours > 0) {
+                                timeToCatch = `${hours}h`;
+                            } else {
+                                timeToCatch = `${minutes}m`;
+                            }
+                        }
+                    }
+                }
+                // Render the row
+                const row = document.createElement('tr');
+                if (clan.clan_name === currentTargetClan) {
+                    row.classList.add('highlight');
+                }
+                const gainValue = clan[gainField] !== undefined ? clan[gainField] : null;
+                const imageId = getImageId(clan.icon);
+                const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+                // --- Add gain-higher-than-tracked class if needed ---
+                let gainClass = '';
+                if (
+                    trackedClanGain !== null &&
+                    gainValue !== null &&
+                    clan.clan_name !== currentTargetClan &&
+                    gainValue > trackedClanGain
+                ) {
+                    gainClass = 'gain-higher-than-tracked';
+                }
+
+
+            }
+            // Update Last Updated timestamp
+            lastUpdatedElement.textContent = new Date().toLocaleTimeString();
+
+            // After setting currentTargetClan, if it was previously unset and is now set, call fetchReachTargetData
+            if (wasUnset && currentTargetClan) {
                 fetchReachTargetData();
             }
         } else {
-            // Restore previous selection
-            targetClanSelect.value = previousSelectedClan;
-            currentTargetClan = previousSelectedClan;
+            // Handle empty data case
+            console.warn("Received empty or invalid topClans list:", topClans);
+            leaderboardBody.innerHTML = '<tr><td colspan="7">No clan data available.</td></tr>';
+            if (comparisonClanListDiv) comparisonClanListDiv.innerHTML = '(No clans to select)';
+            lastUpdatedElement.textContent = new Date().toLocaleTimeString();
         }
-        // --- End Dropdown Population ---
-  
-        // --- Populate All Clan Pills ---
-        if (allClanPillsContainer) {
-          allClanPillsContainer.innerHTML = '';
-          clanList.forEach(clan => {
-            const pill = document.createElement('span');
-            pill.classList.add('clan-option-pill');
-            pill.textContent = clan.clan_name;
-            pill.dataset.clanName = clan.clan_name;
-            pill.addEventListener('click', handleClanPillClick);
-            if (selectedComparisonClans.includes(clan.clan_name)) {
-              pill.classList.add('selected');
-            }
-            allClanPillsContainer.appendChild(pill);
-          });
+
+        // --- Restore Custom Dropdown Rendering ---
+        // 1. Hide the old select and add a new div for the custom dropdown
+        console.log('Attempting to hide old select and insert custom dropdown...');
+        if (targetClanSelect) {
+            targetClanSelect.style.display = 'none';
+            console.log('targetClanSelect found and hidden.');
         } else {
-          console.error("All clan pills container not found!");
+            console.warn('targetClanSelect not found!');
         }
-        // --- End Populate All Clan Pills ---
-  
-        // --- Populate table rows (Existing logic) ---
-        let trackedClanGain = null;
-        if (clanList && Array.isArray(clanList)) {
-            const trackedClan = clanList.find(clan => clan.clan_name === currentTargetClan);
-            if (trackedClan) trackedClanGain = trackedClan.x_minute_gain;
+        // Always remove the old custom dropdown before creating a new one
+        let oldDropdown = document.getElementById('custom-clan-dropdown');
+        if (oldDropdown && oldDropdown.parentNode) {
+            oldDropdown.parentNode.removeChild(oldDropdown);
         }
-  
-        clanList.forEach(clan => {
-          const row = document.createElement('tr');
-          if (clan.clan_name === currentTargetClan) { // Add highlighting
-            row.classList.add('highlight');
-          }
-          // Get image ID and URL
-          const imageId = getImageId(clan.icon);
-          const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
-
-          const ttcStr = formatTimeOrNA(clan.time_to_catch);
-          const ttcMins = parseTimeToMinutes(ttcStr);
-          const warEnded = /ended|n\/a|error/i.test(countdownTimerElement.textContent);
-          let ttcColor = '';
-          if (ttcMins !== null) {
-              if (warEnded) {
-                  ttcColor = 'red';
-              } else {
-                  const warMins = parseTimeToMinutes(countdownTimerElement.textContent);
-                  if (warMins !== null) {
-                      ttcColor = ttcMins <= warMins ? 'green' : 'red';
-                  }
-              }
-          }
-
-          row.innerHTML = `
-              <td>${formatRank(clan.current_rank)}</td>
-              <td>
-                  ${imageUrl ? `<img src="${imageUrl}" alt="icon" class="clan-icon">` : ''}
-                  ${clan.clan_name || '-'}
-              </td>
-              <td>${formatNumber(clan.current_points)}</td>
-              <td>${
-                  (clan.clan_name !== currentTargetClan && trackedClanGain !== null && clan.x_minute_gain > trackedClanGain)
-                      ? `<span style='color: red'>${formatGain(clan.x_minute_gain)}</span>`
-                      : formatGain(clan.x_minute_gain)
-              }</td>
-              <td>${formatNumber(clan.gap)}</td>
-              <td>${ttcColor && ttcStr !== '-' ? `<span style='color: ${ttcColor}'>${ttcStr}</span>` : ttcStr}</td>
-              <td>${formatRank(clan.forecast)}</td>
-            `;
-          leaderboardBody.appendChild(row);
-        });
-        // Update Last Updated timestamp
-        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
-  
-      } else {
-        // Handle empty data case
-        console.warn("Received empty or invalid clan list:", clanList);
-        leaderboardBody.innerHTML = '<tr><td colspan="7">No clan data available.</td></tr>';
-        if (comparisonClanListDiv) comparisonClanListDiv.innerHTML = '(No clans to select)'; // Update placeholder if empty
-        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
-      }
-  
-    } catch (error) {
-      console.error("Error fetching or processing dashboard data:", error);
-      leaderboardBody.innerHTML = `<tr><td colspan="7">Error loading data. Check console. (${error.message})</td></tr>`;
-      if (comparisonClanListDiv) comparisonClanListDiv.innerHTML = '(Error loading clans)'; // Update placeholder on error
-      lastUpdatedElement.textContent = new Date().toLocaleTimeString();
-    }
-
-    // 1. Hide the old select and add a new div for the custom dropdown
-    console.log('Attempting to hide old select and insert custom dropdown...');
-    if (targetClanSelect) {
-        targetClanSelect.style.display = 'none';
-        console.log('targetClanSelect found and hidden.');
-    } else {
-        console.warn('targetClanSelect not found!');
-    }
-    let customDropdown = document.getElementById('custom-clan-dropdown');
-    if (!customDropdown) {
-        customDropdown = document.createElement('div');
+        let customDropdown = document.createElement('div');
         customDropdown.id = 'custom-clan-dropdown';
         customDropdown.className = 'custom-clan-dropdown';
         if (targetClanSelect && targetClanSelect.parentNode) {
@@ -410,72 +503,31 @@ async function fetchDashboardData() {
         } else {
             console.warn('Could not insert custom dropdown: targetClanSelect or its parentNode is missing.');
         }
-    } else {
-        console.log('Custom dropdown already exists in DOM.');
-    }
 
-    // Helper to render the custom dropdown
-    console.log('Calling renderCustomClanDropdown with clanList:', clanList);
-    renderCustomClanDropdown(clanList);
+        // Helper to render the custom dropdown
+        console.log('Calling renderCustomClanDropdown with topClans:', topClans);
+        renderCustomClanDropdown(topClans);
 
-    // Hide the old number input and add a new div for the custom rank dropdown
-    if (targetRankInput) targetRankInput.style.display = 'none';
-    let customRankDropdown = document.getElementById('custom-rank-dropdown');
-    if (!customRankDropdown) {
-        customRankDropdown = document.createElement('div');
-        customRankDropdown.id = 'custom-rank-dropdown';
-        customRankDropdown.className = 'custom-rank-dropdown';
-        targetRankInput.parentNode.insertBefore(customRankDropdown, targetRankInput);
-    }
-
-    function renderCustomRankDropdown(selectedRank = 1) {
-        const dropdown = document.getElementById('custom-rank-dropdown');
-        dropdown.innerHTML = '';
-        const selected = document.createElement('div');
-        selected.className = 'custom-rank-selected';
-        selected.innerHTML = `
-            <span>${selectedRank}</span>
-            <span class="dropdown-arrow">&#9662;</span>
-        `;
-        dropdown.appendChild(selected);
-
-        const list = document.createElement('ul');
-        list.className = 'rank-dropdown-list';
-        for (let i = 1; i <= 20; i++) {
-            const item = document.createElement('li');
-            item.className = 'rank-dropdown-item';
-            item.textContent = i;
-            item.onclick = () => {
-                currentTargetRank = i;
-                renderCustomRankDropdown(i);
-                fetchReachTargetData();
-            };
-            list.appendChild(item);
+        // Hide the old number input and add a new div for the custom rank dropdown
+        if (targetRankInput) targetRankInput.style.display = 'none';
+        let customRankDropdown = document.getElementById('custom-rank-dropdown');
+        if (!customRankDropdown) {
+            customRankDropdown = document.createElement('div');
+            customRankDropdown.id = 'custom-rank-dropdown';
+            customRankDropdown.className = 'custom-rank-dropdown';
+            targetRankInput.parentNode.insertBefore(customRankDropdown, targetRankInput);
         }
-        dropdown.appendChild(list);
 
-        // Force dropdown list width to match the selected box
-        setTimeout(() => {
-            const selectedBox = dropdown.querySelector('.custom-rank-selected');
-            if (selectedBox) {
-                const selectedWidth = selectedBox.offsetWidth;
-                list.style.width = selectedWidth + 'px';
-                list.style.minWidth = selectedWidth + 'px';
-                list.style.maxWidth = selectedWidth + 'px';
-                list.style.boxSizing = 'border-box';
-            }
-        }, 0);
+        // In fetchDashboardData or initializeApp, after rendering the controls, call:
+        renderCustomRankDropdown(currentTargetRank);
 
-        // Toggle dropdown
-        selected.onclick = (e) => {
-            e.stopPropagation();
-            list.classList.toggle('show');
-        };
-        document.addEventListener('click', () => list.classList.remove('show'));
+        renderLeaderboardTable(topClans); // Only call this to render the table
+    } catch (error) {
+        console.error("Error fetching or processing snapshot data:", error);
+        leaderboardBody.innerHTML = `<tr><td colspan="7">Error loading data. Check console. (${error.message})</td></tr>`;
+        if (comparisonClanListDiv) comparisonClanListDiv.innerHTML = '(Error loading clans)';
+        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
     }
-
-    // In fetchDashboardData or initializeApp, after rendering the controls, call:
-    renderCustomRankDropdown(currentTargetRank);
 }
 
 // Helper to render the custom dropdown
@@ -487,11 +539,13 @@ function renderCustomClanDropdown(clanList) {
         return;
     }
     dropdown.innerHTML = '';
-    const selected = document.createElement('div');
-    selected.className = 'custom-clan-selected';
-    let selectedClan = clanList.find(c => c.clan_name === currentTargetClan) || clanList[0];
+    // Use pendingTargetClan if set, otherwise currentTargetClan
+    const selectedClanName = pendingTargetClan || currentTargetClan;
+    let selectedClan = clanList.find(c => c.clan_name === selectedClanName) || clanList[0];
     const imageId = getImageId(selectedClan.icon);
     const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+    const selected = document.createElement('div');
+    selected.className = 'custom-clan-selected';
     selected.innerHTML = `
         ${imageUrl ? `<img src="${imageUrl}" class="clan-icon">` : ''}
         <span>${selectedClan.clan_name}</span>
@@ -510,12 +564,13 @@ function renderCustomClanDropdown(clanList) {
             ${imageUrl ? `<img src="${imageUrl}" class="clan-icon">` : ''}
             <span>${clan.clan_name}</span>
         `;
+        if (clan.clan_name === selectedClanName) {
+            item.classList.add('selected');
+        }
         item.onclick = () => {
-            currentTargetClan = clan.clan_name;
-            localStorage.setItem('selectedClan', currentTargetClan); // Save to localStorage
+            pendingTargetClan = clan.clan_name;
+            targetClanSelect.value = clan.clan_name; // Sync native select with custom dropdown
             renderCustomClanDropdown(clanList);
-            fetchReachTargetData();
-            fetchDashboardData();
         };
         list.appendChild(item);
     });
@@ -538,6 +593,56 @@ function renderCustomClanDropdown(clanList) {
         e.stopPropagation();
         list.classList.toggle('show');
         console.log('Dropdown toggled.');
+    };
+    document.addEventListener('click', () => list.classList.remove('show'));
+}
+
+function renderCustomRankDropdown(selectedRank = 1) {
+    const dropdown = document.getElementById('custom-rank-dropdown');
+    dropdown.innerHTML = '';
+    // Use pendingTargetRank if set, otherwise currentTargetRank
+    const selectedRankValue = pendingTargetRank || currentTargetRank;
+    const selected = document.createElement('div');
+    selected.className = 'custom-rank-selected';
+    selected.innerHTML = `
+        <span>${selectedRankValue}</span>
+        <span class="dropdown-arrow">&#9662;</span>
+    `;
+    dropdown.appendChild(selected);
+
+    const list = document.createElement('ul');
+    list.className = 'rank-dropdown-list';
+    for (let i = 1; i <= 20; i++) {
+        const item = document.createElement('li');
+        item.className = 'rank-dropdown-item';
+        item.textContent = i;
+        if (i === selectedRankValue) {
+            item.classList.add('selected');
+        }
+        item.onclick = () => {
+            pendingTargetRank = i;
+            renderCustomRankDropdown(i);
+        };
+        list.appendChild(item);
+    }
+    dropdown.appendChild(list);
+
+    // Force dropdown list width to match the selected box
+    setTimeout(() => {
+        const selectedBox = dropdown.querySelector('.custom-rank-selected');
+        if (selectedBox) {
+            const selectedWidth = selectedBox.offsetWidth;
+            list.style.width = selectedWidth + 'px';
+            list.style.minWidth = selectedWidth + 'px';
+            list.style.maxWidth = selectedWidth + 'px';
+            list.style.boxSizing = 'border-box';
+        }
+    }, 0);
+
+    // Toggle dropdown
+    selected.onclick = (e) => {
+        e.stopPropagation();
+        list.classList.toggle('show');
     };
     document.addEventListener('click', () => list.classList.remove('show'));
 }
@@ -710,19 +815,19 @@ function updateGainHeader(periodMinutes) {
      }
 }
 
-// --- ** NEW function to toggle controls visibility ** ---
-function toggleControls() {
-    controlsExpanded = !controlsExpanded;
-    controlsArea.classList.toggle('collapsed');
-    console.log(`Controls section is now ${controlsExpanded ? 'expanded' : 'collapsed'}`);
-  }
-
-// Modify initializeApp() to include the battle selector population
+// --- Modify initializeApp() to remove collapsing listener ---
 async function initializeApp() {
     console.log("Initializing app...");
 
     // First, populate the battle selector and wait for it
     await populateBattleSelector();
+
+    // Restore target rank from localStorage if present
+    const savedTargetRank = localStorage.getItem('selectedTargetRank');
+    if (savedTargetRank) {
+        currentTargetRank = parseInt(savedTargetRank, 10);
+        targetRankInput.value = currentTargetRank;
+    }
 
     // Set initial state from controls
     timePeriodRadios.forEach(radio => { if (radio.checked) currentTimePeriod = parseInt(radio.value, 10); });
@@ -756,59 +861,11 @@ async function initializeApp() {
     // Update Header on Initial Load
     updateGainHeader(currentTimePeriod);
 
-      // --- ** NEW: Add event listener to the Controls heading ** ---
-     if (controlsHeading) {
-    controlsHeading.addEventListener('click', toggleControls);
-        } else {
-    console.error("Controls heading (h2 inside #controls-area) not found!");
-        }
+    // --- ** NEW: Add event listener to the Controls heading ** ---
+    // collapsing via header not needed in modal mode
+    // controlsHeading click listener removed
 
-    // --- Add listeners for Dashboard Controls ---
-    timePeriodRadios.forEach(radio => {
-        radio.addEventListener('change', (event) => {
-            currentTimePeriod = parseInt(event.target.value, 10);
-            console.log(`Gain Period changed to: ${currentTimePeriod} minutes`);
-            updateGainHeader(currentTimePeriod); // Update header on change
-            fetchDashboardData();
-        });
-    });
-
-    forecastPeriodRadios.forEach(radio => {
-        radio.addEventListener('change', (event) => {
-            currentForecastPeriod = parseInt(event.target.value, 10);
-            console.log(`Forecast Period changed to: ${currentForecastPeriod} minutes`);
-            fetchDashboardData();
-            fetchReachTargetData();
-        });
-    });
-
-    targetClanSelect.addEventListener('change', (event) => {
-        currentTargetClan = event.target.value;
-        console.log(`Target Clan changed to: ${currentTargetClan}`);
-        fetchDashboardData(); // Refreshes table and applies highlight
-        fetchReachTargetData();
-    });
-
-    targetRankInput.addEventListener('change', (event) => {
-        let rankValue = parseInt(event.target.value, 10);
-        if (isNaN(rankValue) || rankValue < 1) { rankValue = 1; }
-        else if (rankValue > 250) { rankValue = 250; }
-        currentTargetRank = rankValue;
-        targetRankInput.value = currentTargetRank;
-        console.log(`Target Rank changed to: ${currentTargetRank}`);
-        fetchReachTargetData();
-    });
-    // --- End Dashboard Control Listeners ---
-
-
-    // --- ** NEW: Add Listeners for Comparison Controls ** ---
-    if (updateComparisonBtn) {
-        console.log("Attaching click listener to Update Comparison button."); // Verify attachment
-        updateComparisonBtn.addEventListener('click', updateComparisonChart);
-    } else {
-        console.error("Update Comparison Button not found!");
-    }
-
+    // --- Removed live-change listeners; batch apply via modal ---
     comparisonTimePeriodRadios.forEach(radio => {
          radio.addEventListener('change', (event) => {
               currentComparisonTimePeriod = parseInt(event.target.value, 10);
@@ -818,6 +875,88 @@ async function initializeApp() {
      });
     // --- ** END NEW Comparison Listeners ** ---
 
+    // --- Controls Modal Functionality ---
+    const openControlsBtn = document.getElementById('open-controls-btn');
+    const controlsCancelBtn = document.getElementById('controls-cancel-btn');
+    const controlsApplyBtn = document.getElementById('controls-apply-btn');
+    const controlsOverlay = document.getElementById('controls-overlay');
+    // Save original settings for Cancel
+    let modalOriginalSettings = {
+        timePeriod: currentTimePeriod,
+        forecastPeriod: currentForecastPeriod,
+        targetClan: currentTargetClan,
+        targetRank: currentTargetRank
+    };
+    function openControlsModal() {
+        // Re-render battle dropdown in case list changed
+        if (battleList.length) renderCustomBattleDropdown(battleList);
+        // Re-render the tracked clan dropdown with the latest data
+        if (clanList.length) renderCustomClanDropdown(clanList);
+        // Re-render the target rank dropdown with the current rank
+        if (document.getElementById('custom-rank-dropdown')) {
+            renderCustomRankDropdown(currentTargetRank);
+        }
+        modalOriginalSettings = {
+            timePeriod: currentTimePeriod,
+            forecastPeriod: currentForecastPeriod,
+            targetClan: currentTargetClan,
+            targetRank: currentTargetRank
+        };
+        document.getElementById('controls-area').classList.add('modal-visible');
+        document.getElementById('controls-overlay').classList.add('modal-visible');
+    }
+    function closeControlsModal(revert = false) {
+        if (revert) {
+            // revert UI inputs
+            timePeriodRadios.forEach(r => r.checked = (parseInt(r.value, 10) === modalOriginalSettings.timePeriod));
+            forecastPeriodRadios.forEach(r => r.checked = (parseInt(r.value, 10) === modalOriginalSettings.forecastPeriod));
+            targetClanSelect.value = modalOriginalSettings.targetClan;
+            targetRankInput.value = modalOriginalSettings.targetRank;
+        }
+        document.getElementById('controls-area').classList.remove('modal-visible');
+        document.getElementById('controls-overlay').classList.remove('modal-visible');
+    }
+    openControlsBtn.addEventListener('click', openControlsModal);
+    controlsCancelBtn.addEventListener('click', () => closeControlsModal(true));
+    controlsOverlay.addEventListener('click', () => closeControlsModal(true));
+    controlsApplyBtn.addEventListener('click', () => {
+        const prevBattleId = currentBattleId;
+        const prevTargetClan = currentTargetClan;
+        const prevTargetRank = currentTargetRank;
+        const prevTimePeriod = currentTimePeriod;
+        const prevForecastPeriod = currentForecastPeriod;
+        currentTimePeriod = parseInt(document.querySelector('input[name="time_period"]:checked').value, 10);
+        currentForecastPeriod = parseInt(document.querySelector('input[name="forecast_period"]:checked').value, 10);
+        currentBattleId = pendingBattleId || currentBattleId;
+        currentTargetClan = pendingTargetClan || currentTargetClan;
+        currentTargetRank = pendingTargetRank || currentTargetRank;
+        // Clear pending values
+        pendingBattleId = null;
+        pendingTargetClan = null;
+        pendingTargetRank = null;
+        // --- Persist selected battle to localStorage ---
+        localStorage.setItem('selectedBattleId', currentBattleId);
+        // --- Persist selected tracked clan to localStorage ---
+        localStorage.setItem('selectedClan', currentTargetClan);
+        // --- Persist selected target rank to localStorage ---
+        localStorage.setItem('selectedTargetRank', currentTargetRank);
+        // Only fetch new data if battle, tracked clan, or target rank changed
+        if (
+            currentBattleId !== prevBattleId ||
+            currentTargetClan !== prevTargetClan ||
+            currentTargetRank !== prevTargetRank
+        ) {
+            fetchDashboardData();
+            fetchReachTargetData();
+        } else {
+            // Just re-render the leaderboard and update gain header
+            if (lastDashboardData) {
+                renderLeaderboardTable(lastDashboardData);
+                updateGainHeader(currentTimePeriod);
+            }
+        }
+        closeControlsModal(false);
+    });
 
     // --- Initial data fetch ---
     fetchCountdown();
@@ -826,15 +965,19 @@ async function initializeApp() {
     fetchDashboardData(); // Also populates dropdown initially
     setInterval(fetchDashboardData, 120000);
 
-    fetchReachTargetData(); // Fetch initial reach target data
+    fetchReachTargetData(true); // Fetch initial reach target data, suppress placeholder
 }
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeApp();
+        // Start the refresh countdown timer
+        setInterval(updateRefreshCountdown, 1000);
     });
 } else {
     initializeApp();
+    // Start the refresh countdown timer
+    setInterval(updateRefreshCountdown, 1000);
 }
 
 // Helper to extract image ID from icon string
@@ -854,4 +997,127 @@ function parseTimeToMinutes(timeStr) {
     if (hMatch) total += parseInt(hMatch[1], 10) * 60;
     if (mMatch) total += parseInt(mMatch[1], 10);
     return total > 0 ? total : null;
+}
+
+function renderLeaderboardTable(topClans) {
+    leaderboardBody.innerHTML = '';
+    if (topClans && Array.isArray(topClans) && topClans.length > 0) {
+        let trackedClanGain = null;
+        if (topClans && Array.isArray(topClans)) {
+            const trackedClan = topClans.find(clan => clan.clan_name === currentTargetClan);
+            if (trackedClan) {
+                const gainField = `gain_${currentTimePeriod}m`;
+                trackedClanGain = trackedClan[gainField];
+            }
+        }
+        // Update the gain header to reflect the selected period
+        updateGainHeader(currentTimePeriod);
+        // --- Calculate gap and time to catch for each clan ---
+        const gainField = `gain_${currentTimePeriod}m`; // For Gain column
+        const forecastGainField = `gain_${currentForecastPeriod}m`; // For Time to Catch
+        for (let i = 0; i < topClans.length; i++) {
+            const clan = topClans[i];
+            let gap = '';
+            let timeToCatch = '';
+            if (i > 0) {
+                // Calculate gap to the clan above
+                const aboveClan = topClans[i - 1];
+                if (aboveClan && typeof aboveClan.current_points === 'number' && typeof clan.current_points === 'number') {
+                    gap = aboveClan.current_points - clan.current_points;
+                    if (gap < 0) gap = 0;
+                }
+                // Calculate time to catch using forecast period gains
+                const currentForecastGain = clan[forecastGainField];
+                const aboveForecastGain = aboveClan[forecastGainField];
+                if (
+                    typeof currentForecastGain === 'number' &&
+                    typeof aboveForecastGain === 'number' &&
+                    currentForecastGain > aboveForecastGain &&
+                    gap > 0 &&
+                    currentForecastPeriod > 0
+                ) {
+                    const gainDifference = currentForecastGain - aboveForecastGain;
+                    const minutesToCatch = (gap * currentForecastPeriod) / gainDifference;
+                    if (isFinite(minutesToCatch) && minutesToCatch > 0) {
+                        // Format as days/hours/minutes if over 24h
+                        const days = Math.floor(minutesToCatch / 1440);
+                        const hours = Math.floor((minutesToCatch % 1440) / 60);
+                        const minutes = Math.round(minutesToCatch % 60);
+                        if (days > 0) {
+                            let str = `${days}d`;
+                            if (hours > 0) str += ` ${hours}h`;
+                            if (minutes > 0) str += ` ${minutes}m`;
+                            timeToCatch = str;
+                        } else if (hours > 0 && minutes > 0) {
+                            timeToCatch = `${hours}h ${minutes}m`;
+                        } else if (hours > 0) {
+                            timeToCatch = `${hours}h`;
+                        } else {
+                            timeToCatch = `${minutes}m`;
+                        }
+                    }
+                }
+            }
+            // Render the row
+            const row = document.createElement('tr');
+            if (clan.clan_name === currentTargetClan) {
+                row.classList.add('highlight');
+            }
+            const gainValue = clan[gainField] !== undefined ? clan[gainField] : null;
+            const imageId = getImageId(clan.icon);
+            const imageUrl = imageId ? `https://ps99.biggamesapi.io/image/${imageId}` : '';
+            
+            const warTimeStr = countdownTimerElement.textContent;
+            const warTimeMinutes = parseTimeToMinutes(warTimeStr);
+            const ttcMinutes = parseTimeToMinutes(timeToCatch);
+
+            let ttcClass = '';
+            if (ttcMinutes !== null && warTimeMinutes !== null) {
+                ttcClass = ttcMinutes <= warTimeMinutes ? 'ttc-green' : 'ttc-grey';
+            }
+            
+            // --- Add gain-higher-than-tracked class if needed ---
+            let gainClass = '';
+            if (
+                trackedClanGain !== null &&
+                gainValue !== null &&
+                clan.clan_name !== currentTargetClan &&
+                gainValue > trackedClanGain
+            ) {
+                gainClass = 'gain-higher-than-tracked';
+            }
+            row.innerHTML = `
+                <td>${formatRank(clan.current_rank)}</td>
+                <td>${imageUrl ? `<img src="${imageUrl}" class="clan-icon">` : ''}${clan.clan_name || '-'}</td>
+                <td>${formatNumber(clan.current_points)}</td>
+                <td class="${gainClass}">${gainValue !== null ? formatGain(gainValue) : '-'}</td>
+                <td>${gap !== '' && gap !== 0 ? formatNumber(gap) : ''}</td>
+                <td${ttcClass ? ` class="${ttcClass}"` : ''}>${timeToCatch}</td>
+                <td>${clan.forecast_rank !== undefined ? formatRank(clan.forecast_rank) : '-'}</td>
+            `;
+            leaderboardBody.appendChild(row);
+        }
+        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
+    } else {
+        leaderboardBody.innerHTML = '<tr><td colspan="7">No clan data available.</td></tr>';
+        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
+    }
+}
+
+// --- Helper Functions ---
+function updateRefreshCountdown() {
+    if (!nextRefreshTime) return;
+    
+    const now = new Date();
+    const timeUntilRefresh = Math.max(0, nextRefreshTime - now);
+    const seconds = Math.floor(timeUntilRefresh / 1000);
+    
+    // Format the countdown
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    const countdownStr = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    
+    // Update the last updated text with countdown
+    const lastUpdatedTime = lastUpdatedElement.getAttribute('data-last-updated') || new Date().toLocaleTimeString();
+    lastUpdatedElement.textContent = `${lastUpdatedTime} (Next refresh in ${countdownStr})`;
 }

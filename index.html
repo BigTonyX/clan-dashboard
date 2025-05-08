@@ -25,26 +25,15 @@
     </header>
 
     <section id="controls-area">
-      <h2>Controls</h2>
+      <h2>Settings</h2>
       <div class="controls-grid">
-        <div class="controls-row">
-          <div class="control-group gain-period">
-            <label>Show Points Gained in the Last:</label>
-            <div class="radio-group">
-              <label><input type="radio" name="time_period" value="30"> 30m</label>
-              <label><input type="radio" name="time_period" value="60"checked> 1h</label>
-              <label><input type="radio" name="time_period" value="180"> 3h</label>
-              <label><input type="radio" name="time_period" value="360"> 6h</label>
-              <label><input type="radio" name="time_period" value="720"> 12h</label>
-              <label><input type="radio" name="time_period" value="1080"> 18h</label>
-              <label><input type="radio" name="time_period" value="1440"> 24h</label>
-            </div>
-          </div>
+        <div class="controls-row dropdown-row">
           <div class="tracked-clan-dropdown">
             <label for="battle-select">Battle:</label>
-            <select id="battle-select" name="battle">
+            <select id="battle-select" name="battle" style="display:none;">
               <option value="">Loading battles...</option>
             </select>
+            <div id="custom-battle-dropdown" class="custom-clan-dropdown"></div>
           </div>
           <div class="tracked-clan-dropdown">
             <label for="target-clan-select">Tracked Clan:</label>
@@ -52,8 +41,26 @@
               <option value="">-- Select Clan --</option>
             </select>
           </div>
+          <div class="target-rank-dropdown">
+            <label for="target-rank-input">Target Rank:</label>
+            <input type="number" id="target-rank-input" name="target_rank" value="1" min="1" max="250">
+          </div>
         </div>
-        <div class="controls-row">
+        <div class="controls-row radio-row">
+          <div class="control-group gain-period">
+            <label>Show Points Gained in the Last:</label>
+            <div class="radio-group">
+              <label><input type="radio" name="time_period" value="30"> 30m</label>
+              <label><input type="radio" name="time_period" value="60" checked> 1h</label>
+              <label><input type="radio" name="time_period" value="180"> 3h</label>
+              <label><input type="radio" name="time_period" value="360"> 6h</label>
+              <label><input type="radio" name="time_period" value="720"> 12h</label>
+              <label><input type="radio" name="time_period" value="1080"> 18h</label>
+              <label><input type="radio" name="time_period" value="1440"> 24h</label>
+            </div>
+          </div>
+        </div>
+        <div class="controls-row radio-row">
           <div class="control-group catch-period">
             <label>Forecast "Time to Catch" Using Gains from the last:</label>
             <div class="radio-group">
@@ -66,22 +73,28 @@
               <label><input type="radio" name="forecast_period" value="1440"> 24h</label>
             </div>
           </div>
-          <div class="target-rank-dropdown">
-            <label for="target-rank-input">Target Rank:</label>
-            <input type="number" id="target-rank-input" name="target_rank" value="1" min="1" max="250">
-          </div>
         </div>
-      </div> </section>
-
-    <section id="reach-target-display">
-          <p>(Reach Target Placeholder)</p>
+      </div>
+      <div class="modal-footer">
+        <button id="controls-cancel-btn">Cancel</button>
+        <button id="controls-apply-btn">Apply</button>
+      </div>
     </section>
+
+    <div id="controls-overlay"></div>
 
     <main id="leaderboard-area">
       <div class="leaderboard-header">
-        <h2>Leaderboard</h2>
-        <a href="member_dashboard.html" class="member-dashboard-btn" target="_blank" rel="noopener noreferrer">Member Dashboard</a>
+        <div id="reach-target-display" class="reach-target-inline">
+          <p>Calculating...</p>
+        </div>
+        <div class="header-actions">
+          <button id="open-controls-btn" class="controls-btn">Settings</button>
+          <a href="member_dashboard.html" class="member-dashboard-btn" target="_blank" rel="noopener noreferrer">Clan Dash</a>
+        </div>
       </div>
+      
+    </main>
       <table id="leaderboard-table">
         <thead>
           <tr>
@@ -106,7 +119,7 @@
       <div id="comparison-controls">
 
         <div class="control-group">
-            <label>Pick a Time Period to Compare:</label>
+            <label>PICK A TIME PERIOD TO COMPARE:</label>
              <div class="radio-group horizontal-radio-group">
                 <label><input type="radio" name="comparison_time_period" value="60" checked> 1h</label>
                 <label><input type="radio" name="comparison_time_period" value="360"> 6h</label>
@@ -120,14 +133,13 @@
         <button id="update-comparison-btn">Update Comparison Chart</button>
 
         <div class="control-group">
-          <label>Clans to Compare (Select up to 3):</label>
+          <label>CLANS TO COMPARE (MAX 3):</label>
           <div id="comparison-selection-area">
             <div id="selected-clan-pills">
               </div>
             <div id="all-clan-pills">
               </div>
           </div>
-          <p class="selection-limit-note">Select up to 3 clans.</p>
         </div>
      
       </div>
