@@ -82,7 +82,7 @@ def format_timedelta(delta):
     return " ".join(parts) if parts else "0m"
 
 # Countdown endpoint
-@app.get("/api/countdown")
+@app.get("/countdown")
 async def get_countdown():
     """Fetches the war end time and returns the formatted countdown."""
     countdown_url = "https://ps99.biggamesapi.io/api/activeClanBattle"
