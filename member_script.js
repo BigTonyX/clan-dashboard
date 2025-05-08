@@ -164,8 +164,8 @@ function updateBattleSelect(memberData) {
 }
 
 // Add CSS for loading overlay
-const style = document.createElement('style');
-style.textContent = `
+const loadingOverlayStyle = document.createElement('style');
+loadingOverlayStyle.textContent = `
 .loading-spinner {
     display: inline-block;
     width: 16px;
@@ -217,7 +217,7 @@ style.textContent = `
     100% { transform: rotate(360deg); }
 }
 `;
-document.head.appendChild(style);
+document.head.appendChild(loadingOverlayStyle);
 
 // Add loading overlay HTML
 const loadingOverlay = document.createElement('div');
